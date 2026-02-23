@@ -1,25 +1,32 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { obterInadimplentes } from './services/DashboardService'
 import { supabase } from './config/supabase'
 import { CadastroFilho } from './components/CadastroFilho'
 import { LancamentoFinanceiro } from './components/LancamentoFinanceiro'
-import { LayoutDashboard, Users, Wallet, AlertCircle, List, Clock, Trash2, CalendarDays, Pencil } from 'lucide-react'
+import {
+  LayoutDashboard, Users, Wallet, AlertCircle, List, Clock,
+  Trash2, CalendarDays, Pencil, UserPlus, ChevronDown,
+  ChevronUp, Camera, CheckCircle2, XCircle, FastForward
+} from 'lucide-react'
 import './App.css'
 
-// Formatação manual imune à linguagem do navegador
 const formatarData = (data: string) => {
   if (!data) return '--/--/----'
   const [ano, mes, dia] = data.split('T')[0].split('-')
   return `${dia}/${mes}/${ano}`
 }
 
-function App() {
+export default function App() {
   const [resumo, setResumo] = useState({ totalBruto: 0, gastos: 0, lucro: 0 })
   const [pendentes, setPendentes] = useState<any[]>([])
   const [todosFilhos, setTodosFilhos] = useState<any[]>([])
   const [telaAtiva, setTelaAtiva] = useState<'dashboard' | 'filhos' | 'financeiro'>('dashboard')
   const [mesesDisponiveis, setMesesDisponiveis] = useState<any[]>([])
+
+  const [mostrarFormFilho, setMostrarFormFilho] = useState(false)
   const [filhoEditando, setFilhoEditando] = useState<any>(null)
+  const [filhoExpandido, setFilhoExpandido] = useState<number | null>(null)
+  const [historicoMensalidades, setHistoricoMensalidades] = useState<any[]>([])
 
   const [mesReferencia, setMesReferencia] = useState(() => {
     const hoje = new Date()
@@ -27,66 +34,70 @@ function App() {
   })
 
   async function carregarDados() {
-    let queryFinancas = supabase.from('financeiro').select('tipo, valor')
-    if (mesReferencia !== 'TODOS') queryFinancas = queryFinancas.eq('mes_referencia', mesReferencia)
+    let qFin = supabase.from('financeiro').select('tipo, valor')
+    if (mesReferencia !== 'TODOS') qFin = qFin.eq('mes_referencia', mesReferencia)
+    const { data: fin } = await qFin
+    let b = 0, s = 0
+    fin?.forEach(i => i.tipo === 'ENTRADA' ? b += i.valor : s += i.valor)
+    setResumo({ totalBruto: b, gastos: s, lucro: b - s })
 
-    const { data: financas } = await queryFinancas
-
-    let bruto = 0
-    let saidas = 0
-
-    if (financas) {
-      financas.forEach(item => {
-        if (item.tipo === 'ENTRADA') bruto += item.valor
-        if (item.tipo === 'SAIDA') saidas += item.valor
-      })
-    }
-    setResumo({ totalBruto: bruto, gastos: saidas, lucro: bruto - saidas })
-    
-    let listaPendentes: any[] = []
-    if (mesReferencia !== 'TODOS') listaPendentes = await obterInadimplentes(mesReferencia) || []
-    setPendentes(listaPendentes)
-    
-    const { data: filhosData } = await supabase.from('filhos').select('*').order('id', { ascending: false })
-    setTodosFilhos(filhosData || [])
-
-    const { data: finData } = await supabase.from('financeiro').select('mes_referencia')
-    const mesesSet = new Set<string>()
-
-    const hoje = new Date()
-    mesesSet.add(`${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`)
-
-    if (finData) {
-      finData.forEach(item => {
-        if (item.mes_referencia && item.mes_referencia.includes('/')) mesesSet.add(item.mes_referencia)
-      })
+    if (mesReferencia !== 'TODOS') {
+      const p = await obterInadimplentes(mesReferencia)
+      setPendentes(p || [])
+    } else {
+      setPendentes([])
     }
 
-    const nomesMeses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
-    const opcoesFormatadas = Array.from(mesesSet).map(val => {
-      const [m, a] = val.split('/')
-      return { valor: val, label: `${nomesMeses[parseInt(m) - 1]} de ${a}`, ordem: parseInt(`${a}${m}`) }
+    const { data: f } = await supabase.from('filhos').select('*').order('nome', { ascending: true })
+    setTodosFilhos(f || [])
+
+    const { data: mData } = await supabase.from('financeiro').select('mes_referencia')
+    const mSet = new Set<string>()
+    mSet.add(`${String(new Date().getMonth() + 1).padStart(2, '0')}/${new Date().getFullYear()}`)
+    mData?.forEach(i => i.mes_referencia && mSet.add(i.mes_referencia))
+
+    const opcoes = Array.from(mSet).map(v => {
+      const [m, a] = v.split('/')
+      const nomes = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+      return { valor: v, label: `${nomes[parseInt(m) - 1]} de ${a}`, ordem: parseInt(`${a}${m}`) }
+    }).sort((a, b) => b.ordem - a.ordem)
+
+    opcoes.push({ valor: 'TODOS', label: 'Visão Geral / Histórico', ordem: 0 })
+    setMesesDisponiveis(opcoes)
+  }
+
+  useEffect(() => { carregarDados() }, [telaAtiva, mesReferencia])
+
+  async function toggleExpandir(filho: any) {
+    if (filhoExpandido === filho.id) return setFilhoExpandido(null)
+    setFilhoExpandido(filho.id)
+
+    const { data: pagamentos } = await supabase.from('financeiro').select('*').eq('filho_id', filho.id).eq('categoria', 'MENSALIDADE')
+    const histGerado: any[] = []
+    const dataAtual = new Date()
+
+    if (filho.data_entrada) {
+      const [anoE, mesE] = filho.data_entrada.split('T')[0].split('-')
+      let dataIter = new Date(parseInt(anoE), parseInt(mesE) - 1, 1)
+
+      while (dataIter <= dataAtual || (dataIter.getMonth() === dataAtual.getMonth() && dataIter.getFullYear() === dataAtual.getFullYear())) {
+        const ref = `${String(dataIter.getMonth() + 1).padStart(2, '0')}/${dataIter.getFullYear()}`
+        const pagou = pagamentos?.find(p => p.mes_referencia === ref)
+        histGerado.push({ ref, status: pagou ? 'PAGO' : 'PENDENTE', dt: pagou ? pagou.data_pagamento : null })
+        dataIter.setMonth(dataIter.getMonth() + 1)
+      }
+    }
+
+    pagamentos?.forEach(p => {
+      if (!histGerado.find(h => h.ref === p.mes_referencia)) {
+        histGerado.push({ ref: p.mes_referencia, status: 'ADIANTADO', dt: p.data_pagamento })
+      }
     })
-    opcoesFormatadas.push({ valor: 'TODOS', label: 'Todos os Meses / Visão Geral', ordem: 999999 })
-    opcoesFormatadas.sort((a, b) => b.ordem - a.ordem)
-    setMesesDisponiveis(opcoesFormatadas)
-  }
 
-  useEffect(() => {
-    carregarDados()
-  }, [telaAtiva, mesReferencia])
-
-  async function deletarFilho(id: number, nome: string) {
-    if (window.confirm(`Tem a certeza que deseja excluir o registo de ${nome}?`)) {
-      const { error } = await supabase.from('filhos').delete().eq('id', id)
-      if (!error) carregarDados()
-    }
-  }
-
-  function iniciarEdicaoFilho(filho: any) {
-    setTelaAtiva('filhos')
-    setFilhoEditando(filho)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    setHistoricoMensalidades(histGerado.sort((a, b) => {
+      const [mA, aA] = a.ref.split('/'), [mB, aB] = b.ref.split('/')
+      return parseInt(`${aB}${mB}`) - parseInt(`${aA}${mA}`)
+    }))
   }
 
   return (
@@ -94,110 +105,206 @@ function App() {
       <aside className="sidebar">
         <h2>TTZ GESTÃO</h2>
         <nav>
-          <button className={`nav-item ${telaAtiva === 'dashboard' ? 'active' : ''}`} onClick={() => {setTelaAtiva('dashboard'); setFilhoEditando(null)}}>
-            <LayoutDashboard size={20} /> Dashboard
+          <button className={`nav-item ${telaAtiva === 'dashboard' ? 'active' : ''}`} onClick={() => setTelaAtiva('dashboard')}>
+            <LayoutDashboard size={24} /> Início
           </button>
-          <button className={`nav-item ${telaAtiva === 'filhos' ? 'active' : ''}`} onClick={() => setTelaAtiva('filhos')}>
-            <Users size={20} /> Filhos
+          <button className={`nav-item ${telaAtiva === 'filhos' ? 'active' : ''}`} onClick={() => { setTelaAtiva('filhos'); setMostrarFormFilho(false) }}>
+            <Users size={24} /> Membros
           </button>
-          <button className={`nav-item ${telaAtiva === 'financeiro' ? 'active' : ''}`} onClick={() => {setTelaAtiva('financeiro'); setFilhoEditando(null)}}>
-            <Wallet size={20} /> Financeiro
+          <button className={`nav-item ${telaAtiva === 'financeiro' ? 'active' : ''}`} onClick={() => setTelaAtiva('financeiro')}>
+            <Wallet size={24} /> Caixa
           </button>
         </nav>
       </aside>
 
       <main className="main-content">
-        <header style={{marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-          <h1 style={{fontSize: '2rem', fontWeight: 800}}>
-            {telaAtiva === 'dashboard' ? 'Painel Geral' : telaAtiva === 'filhos' ? 'Gestão de Filhos' : 'Financeiro'}
+        <header className="page-header">
+          <h1>
+            {telaAtiva === 'dashboard' ? 'Painel Geral' : telaAtiva === 'filhos' ? 'Gestão da Corrente' : 'Fluxo de Caixa'}
           </h1>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#fff', padding: '10px 15px', borderRadius: '12px', border: '1px solid #edf2f7' }}>
-            <CalendarDays size={20} color="#2d5a27" />
-            <select 
-              value={mesReferencia}
-              onChange={(e) => setMesReferencia(e.target.value)}
-              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #ddd', outline: 'none', background: '#f8fafc', fontWeight: 'bold', cursor: 'pointer' }}
-            >
-              {mesesDisponiveis.map(mes => <option key={mes.valor} value={mes.valor}>{mes.label}</option>)}
-            </select>
+          <div className="header-actions">
+            {telaAtiva === 'filhos' && (
+              <button className="btn-primary" onClick={() => { setMostrarFormFilho(!mostrarFormFilho); setFilhoEditando(null); }}>
+                {mostrarFormFilho ? <List size={20} /> : <UserPlus size={20} />}
+                {mostrarFormFilho ? 'Ver Lista Completa' : 'Adicionar Novo Filho'}
+              </button>
+            )}
+            <div className="filter-box">
+              <CalendarDays size={20} color="var(--primary)" />
+              <select value={mesReferencia} onChange={e => setMesReferencia(e.target.value)}>
+                {mesesDisponiveis.map(m => <option key={m.valor} value={m.valor}>{m.label}</option>)}
+              </select>
+            </div>
           </div>
         </header>
 
         {telaAtiva === 'dashboard' && (
-          <div style={{width: '100%'}}>
+          <div style={{ width: '100%' }}>
             <section className="stats-grid">
-              <div className="stat-card blue"><h3 style={{fontSize: '0.8rem', color: '#636e72'}}>BRUTO</h3><span className="stat-value">R$ {resumo.totalBruto.toFixed(2)}</span></div>
-              <div className="stat-card red"><h3 style={{fontSize: '0.8rem', color: '#636e72'}}>SAÍDAS</h3><span className="stat-value">R$ {resumo.gastos.toFixed(2)}</span></div>
-              <div className="stat-card green"><h3 style={{fontSize: '0.8rem', color: '#636e72'}}>LUCRO</h3><span className="stat-value">R$ {resumo.lucro.toFixed(2)}</span></div>
+              <div className="stat-card blue">
+                <h3>Total Entradas ({mesReferencia})</h3>
+                <div className="stat-value">R$ {resumo.totalBruto.toFixed(2)}</div>
+              </div>
+              <div className="stat-card red">
+                <h3>Total Saídas ({mesReferencia})</h3>
+                <div className="stat-value">R$ {resumo.gastos.toFixed(2)}</div>
+              </div>
+              <div className="stat-card green">
+                <h3>Saldo Líquido ({mesReferencia})</h3>
+                <div className="stat-value">R$ {resumo.lucro.toFixed(2)}</div>
+              </div>
             </section>
 
             <div className="dashboard-grid">
               <div className="table-container">
-                <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><AlertCircle size={20} color="#f39c12" /> Pendentes</h3>
-                <table>
-                  <thead><tr><th>Nome</th><th>Status</th></tr></thead>
-                  <tbody>
-                    {mesReferencia === 'TODOS' ? <tr><td colSpan={2} style={{textAlign: 'center', padding: '15px'}}>Visão geral ativa.</td></tr> : pendentes.map(f => <tr key={f.id}><td>{f.nome}</td><td><span className="badge-warning">PENDENTE</span></td></tr>)}
-                  </tbody>
-                </table>
+                <h3><AlertCircle size={22} color="#f39c12" /> Mensalidades Pendentes</h3>
+                <div className="table-responsive">
+                  <table>
+                    <thead>
+                      <tr><th>Nome do Membro</th><th>Situação</th></tr>
+                    </thead>
+                    <tbody>
+                      {mesReferencia === 'TODOS' ? (
+                        <tr><td colSpan={2} style={{ textAlign: 'center', padding: '20px' }}>Filtre por um mês específico acima.</td></tr>
+                      ) : pendentes.length === 0 ? (
+                        <tr><td colSpan={2} style={{ textAlign: 'center', color: 'var(--success)', fontWeight: 'bold', padding: '20px' }}>Nenhuma pendência encontrada.</td></tr>
+                      ) : (
+                        pendentes.map(p => (
+                          <tr key={p.id}>
+                            <td data-label="Membro">{p.nome}</td>
+                            <td data-label="Situação"><span className="badge-status badge-pendente">PENDENTE</span></td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
+
               <div className="table-container">
-                <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><List size={20} color="#3498db" /> Corrente Completa</h3>
-                <table>
-                  <thead><tr><th>ID</th><th>Nome</th><th>Nascimento</th><th>Entrada</th><th style={{textAlign: 'center'}}>Ação</th></tr></thead>
-                  <tbody>
-                    {todosFilhos.map(f => (
-                      <tr key={f.id}>
-                        <td>#{f.id}</td><td>{f.nome}</td><td>{formatarData(f.data_nascimento)}</td><td>{formatarData(f.data_entrada)}</td>
-                        <td style={{textAlign: 'center', display: 'flex', gap: '10px', justifyContent: 'center'}}>
-                          <button onClick={() => iniciarEdicaoFilho(f)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}><Pencil size={18} color="#f39c12" /></button>
-                          <button onClick={() => deletarFilho(f.id, f.nome)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}><Trash2 size={18} color="#e74c3c" /></button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <h3><Clock size={22} color="#3498db" /> Entradas Recentes</h3>
+                <div className="table-responsive">
+                  <table>
+                    <thead>
+                      <tr><th>Nome</th><th>Data de Entrada</th></tr>
+                    </thead>
+                    <tbody>
+                      {todosFilhos.slice(0, 5).map(f => (
+                        <tr key={f.id}>
+                          <td data-label="Nome">{f.nome}</td>
+                          <td data-label="Entrada">{formatarData(f.data_entrada)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
         )}
 
         {telaAtiva === 'filhos' && (
-          <div className="dashboard-grid">
-            <div className="table-container">
-              <CadastroFilho 
-                filhoEditando={filhoEditando} 
-                onSucesso={() => { setFilhoEditando(null); carregarDados() }} 
-                onCancelar={() => setFilhoEditando(null)} 
-              />
-            </div>
-            <div className="table-container">
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Clock size={20} color="#3498db" /> Últimos Membros</h3>
-              <table>
-                <thead><tr><th>Nome</th><th>Entrada</th><th style={{textAlign: 'center'}}>Ação</th></tr></thead>
-                <tbody>
-                  {todosFilhos.slice(0, 10).map(f => (
-                    <tr key={f.id}>
-                      <td>{f.nome}</td><td>{formatarData(f.data_entrada)}</td>
-                      <td style={{textAlign: 'center', display: 'flex', gap: '10px', justifyContent: 'center'}}>
-                        <button onClick={() => iniciarEdicaoFilho(f)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}><Pencil size={18} color="#f39c12" /></button>
-                        <button onClick={() => deletarFilho(f.id, f.nome)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}><Trash2 size={18} color="#e74c3c" /></button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div style={{ width: '100%' }}>
+            {mostrarFormFilho ? (
+              <div className="table-container" style={{ maxWidth: '850px', margin: '0 auto' }}>
+                <CadastroFilho
+                  filhoEditando={filhoEditando}
+                  onSucesso={() => { setMostrarFormFilho(false); carregarDados() }}
+                  onCancelar={() => setMostrarFormFilho(false)}
+                />
+              </div>
+            ) : (
+              <div className="table-container">
+                <h3><Users size={22} color="#3498db" /> Lista Completa de Filhos</h3>
+                <div className="table-responsive">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th style={{ width: '50px' }}></th>
+                        <th style={{ width: '40%' }}>Nome Completo</th>
+                        <th style={{ width: '30%' }}>Data de Entrada</th>
+                        <th style={{ textAlign: 'center', width: '30%' }}>Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {todosFilhos.map(f => (
+                        <React.Fragment key={f.id}>
+                          {/* LINHA PRINCIPAL - As classes aqui são essenciais para o mobile */}
+                          <tr
+                            className={`main-row ${filhoExpandido === f.id ? 'is-expanded' : ''}`}
+                            onClick={() => toggleExpandir(f)}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            <td style={{ textAlign: 'center' }}>{filhoExpandido === f.id ? <ChevronUp size={22} color="#64748b" /> : <ChevronDown size={22} color="#64748b" />}</td>
+                            <td data-label="Nome" style={{ fontWeight: 700 }}>{f.nome}</td>
+                            <td data-label="Entrada">{formatarData(f.data_entrada)}</td>
+                            <td data-label="Ações" className="action-cell" onClick={e => e.stopPropagation()}>
+                              <div style={{ display: 'flex', gap: '20px', justifyContent: 'center' }}>
+                                <button onClick={() => { setFilhoEditando(f); setMostrarFormFilho(true) }} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><Pencil size={20} color="#f39c12" /></button>
+                                <button onClick={() => { if (window.confirm(`Excluir definitivamente ${f.nome}?`)) supabase.from('filhos').delete().eq('id', f.id).then(() => carregarDados()) }} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><Trash2 size={20} color="#e74c3c" /></button>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* LINHA EXPANDIDA (Ficha do CRM) */}
+                          {filhoExpandido === f.id && (
+                            <tr className="expanded-crm-row">
+                              <td colSpan={4}>
+                                <div className="crm-box">
+                                  <div className="crm-grid">
+                                    <div className="crm-profile">
+                                      <div className="crm-avatar"><Camera size={35} color="#94a3b8" /></div>
+                                      <h4 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '5px' }}>{f.nome}</h4>
+                                      <span className="badge-status badge-pago">ATIVO NA CORRENTE</span>
+                                      <div style={{ marginTop: '20px', textAlign: 'left' }}>
+                                        <div className="crm-info-item"><span>ID de Registro:</span> <strong>#{f.id}</strong></div>
+                                        <div className="crm-info-item"><span>Data de Nascimento:</span> <strong>{formatarData(f.data_nascimento)}</strong></div>
+                                        <div className="crm-info-item"><span>Entrou na Casa em:</span> <strong>{formatarData(f.data_entrada)}</strong></div>
+                                      </div>
+                                    </div>
+                                    <div className="crm-history">
+                                      <h4 style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}><Wallet size={20} color="#27ae60" /> Histórico Financeiro</h4>
+                                      <div className="history-scroll">
+                                        <table style={{ minWidth: '100%' }}>
+                                          <thead>
+                                            <tr><th>Mês Ref.</th><th>Status</th><th>Data Pagamento</th></tr>
+                                          </thead>
+                                          <tbody>
+                                            {historicoMensalidades.map((h, i) => (
+                                              <tr key={i} style={{ marginBottom: '0', padding: '10px', boxShadow: 'none', borderBottom: '1px solid #eee', borderRadius: '0' }}>
+                                                <td data-label="Mês Ref."><strong>{h.ref}</strong></td>
+                                                <td data-label="Status">
+                                                  {h.status === 'PAGO' && <span className="badge-status badge-pago"><CheckCircle2 size={14} /> PAGO</span>}
+                                                  {h.status === 'PENDENTE' && <span className="badge-status badge-pendente"><XCircle size={14} /> PENDENTE</span>}
+                                                  {h.status === 'ADIANTADO' && <span className="badge-status badge-adiantado"><FastForward size={14} /> ADIANTADO</span>}
+                                                </td>
+                                                <td data-label="Data Pgto">{formatarData(h.dt)}</td>
+                                              </tr>
+                                            ))}
+                                            {historicoMensalidades.length === 0 && (
+                                              <tr><td colSpan={3} style={{ textAlign: 'center', padding: '20px' }}>Sem histórico gerado.</td></tr>
+                                            )}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {telaAtiva === 'financeiro' && (
-          <LancamentoFinanceiro mesFiltro={mesReferencia} />
-        )}
+        {telaAtiva === 'financeiro' && <LancamentoFinanceiro mesFiltro={mesReferencia} />}
       </main>
     </div>
   )
 }
-
-export default App
