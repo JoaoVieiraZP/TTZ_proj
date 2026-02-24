@@ -6,7 +6,8 @@ import { LancamentoFinanceiro } from './components/LancamentoFinanceiro'
 import {
   LayoutDashboard, Users, Wallet, AlertCircle, List, Clock,
   Trash2, CalendarDays, Pencil, UserPlus, ChevronDown,
-  ChevronUp, Camera, CheckCircle2, XCircle, FastForward
+  ChevronUp, Camera, CheckCircle2, XCircle, FastForward,
+  Moon, Sun // <--- Ícones Novos pro Dark Mode
 } from 'lucide-react'
 import './App.css'
 
@@ -27,6 +28,18 @@ export default function App() {
   const [filhoEditando, setFilhoEditando] = useState<any>(null)
   const [filhoExpandido, setFilhoExpandido] = useState<number | null>(null)
   const [historicoMensalidades, setHistoricoMensalidades] = useState<any[]>([])
+
+  const [tema, setTema] = useState(localStorage.getItem('ttz-tema') || 'dark')
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', tema)
+    localStorage.setItem('ttz-tema', tema)
+  }, [tema])
+
+  const alternarTema = () => {
+    setTema(temaAntigo => temaAntigo === 'light' ? 'dark' : 'light')
+  }
+  // =========================================================
 
   const [mesReferencia, setMesReferencia] = useState(() => {
     const hoje = new Date()
@@ -103,7 +116,11 @@ export default function App() {
   return (
     <div className="app-layout">
       <aside className="sidebar">
-        <h2>TTZ GESTÃO</h2>
+        <div className="brand-container">
+          <img src="/logo.png" alt="Logo TTZ" className="brand-logo" onError={(e) => (e.currentTarget.style.display = 'none')} />
+          <h2>TTZ GESTÃO</h2>
+          <h5>Terreiro de Umbanda <br /> Baiana Terezinha e Zé Pelintra</h5>
+        </div>
         <nav>
           <button className={`nav-item ${telaAtiva === 'dashboard' ? 'active' : ''}`} onClick={() => setTelaAtiva('dashboard')}>
             <LayoutDashboard size={24} /> Início
@@ -119,9 +136,15 @@ export default function App() {
 
       <main className="main-content">
         <header className="page-header">
-          <h1>
-            {telaAtiva === 'dashboard' ? 'Painel Geral' : telaAtiva === 'filhos' ? 'Gestão da Corrente' : 'Fluxo de Caixa'}
-          </h1>
+          <div className="header-top">
+            <h1>
+              {telaAtiva === 'dashboard' ? 'Painel Geral' : telaAtiva === 'filhos' ? 'Gestão da Corrente' : 'Fluxo de Caixa'}
+            </h1>
+            <button className="theme-toggle-btn" onClick={alternarTema} title="Mudar Tema">
+              {tema === 'light' ? <Moon size={22} /> : <Sun size={22} />}
+            </button>
+          </div>
+
           <div className="header-actions">
             {telaAtiva === 'filhos' && (
               <button className="btn-primary" onClick={() => { setMostrarFormFilho(!mostrarFormFilho); setFilhoEditando(null); }}>
@@ -157,7 +180,7 @@ export default function App() {
 
             <div className="dashboard-grid">
               <div className="table-container">
-                <h3><AlertCircle size={22} color="#f39c12" /> Mensalidades Pendentes</h3>
+                <h3><AlertCircle size={22} color="var(--warning)" /> Mensalidades Pendentes</h3>
                 <div className="table-responsive">
                   <table>
                     <thead>
@@ -171,7 +194,7 @@ export default function App() {
                       ) : (
                         pendentes.map(p => (
                           <tr key={p.id}>
-                            <td data-label="Membro">{p.nome}</td>
+                            <td data-label="Membro"><strong>{p.nome}</strong></td>
                             <td data-label="Situação"><span className="badge-status badge-pendente">PENDENTE</span></td>
                           </tr>
                         ))
@@ -182,7 +205,7 @@ export default function App() {
               </div>
 
               <div className="table-container">
-                <h3><Clock size={22} color="#3498db" /> Entradas Recentes</h3>
+                <h3><Clock size={22} color="var(--secondary)" /> Entradas Recentes</h3>
                 <div className="table-responsive">
                   <table>
                     <thead>
@@ -191,7 +214,7 @@ export default function App() {
                     <tbody>
                       {todosFilhos.slice(0, 5).map(f => (
                         <tr key={f.id}>
-                          <td data-label="Nome">{f.nome}</td>
+                          <td data-label="Nome"><strong>{f.nome}</strong></td>
                           <td data-label="Entrada">{formatarData(f.data_entrada)}</td>
                         </tr>
                       ))}
@@ -215,45 +238,43 @@ export default function App() {
               </div>
             ) : (
               <div className="table-container">
-                <h3><Users size={22} color="#3498db" /> Lista Completa de Filhos</h3>
+                <h3><Users size={22} color="var(--primary)" /> Lista Completa de Filhos</h3>
                 <div className="table-responsive">
                   <table>
                     <thead>
                       <tr>
-                        <th style={{ width: '50px' }}></th>
+                        <th style={{ width: '60px' }}></th>
                         <th style={{ width: '40%' }}>Nome Completo</th>
                         <th style={{ width: '30%' }}>Data de Entrada</th>
-                        <th style={{ textAlign: 'center', width: '30%' }}>Ações</th>
+                        <th style={{ textAlign: 'center', width: '30%' }}>Gestão</th>
                       </tr>
                     </thead>
                     <tbody>
                       {todosFilhos.map(f => (
                         <React.Fragment key={f.id}>
-                          {/* LINHA PRINCIPAL - As classes aqui são essenciais para o mobile */}
                           <tr
                             className={`main-row ${filhoExpandido === f.id ? 'is-expanded' : ''}`}
                             onClick={() => toggleExpandir(f)}
                             style={{ cursor: 'pointer' }}
                           >
-                            <td style={{ textAlign: 'center' }}>{filhoExpandido === f.id ? <ChevronUp size={22} color="#64748b" /> : <ChevronDown size={22} color="#64748b" />}</td>
+                            <td style={{ textAlign: 'center' }}>{filhoExpandido === f.id ? <ChevronUp size={22} color="var(--text-muted)" /> : <ChevronDown size={22} color="var(--text-muted)" />}</td>
                             <td data-label="Nome" style={{ fontWeight: 700 }}>{f.nome}</td>
                             <td data-label="Entrada">{formatarData(f.data_entrada)}</td>
                             <td data-label="Ações" className="action-cell" onClick={e => e.stopPropagation()}>
                               <div style={{ display: 'flex', gap: '20px', justifyContent: 'center' }}>
-                                <button onClick={() => { setFilhoEditando(f); setMostrarFormFilho(true) }} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><Pencil size={20} color="#f39c12" /></button>
-                                <button onClick={() => { if (window.confirm(`Excluir definitivamente ${f.nome}?`)) supabase.from('filhos').delete().eq('id', f.id).then(() => carregarDados()) }} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><Trash2 size={20} color="#e74c3c" /></button>
+                                <button onClick={() => { setFilhoEditando(f); setMostrarFormFilho(true) }} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><Pencil size={20} color="var(--warning)" /></button>
+                                <button onClick={() => { if (window.confirm(`Excluir definitivamente ${f.nome}?`)) supabase.from('filhos').delete().eq('id', f.id).then(() => carregarDados()) }} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><Trash2 size={20} color="var(--danger)" /></button>
                               </div>
                             </td>
                           </tr>
 
-                          {/* LINHA EXPANDIDA (Ficha do CRM) */}
                           {filhoExpandido === f.id && (
                             <tr className="expanded-crm-row">
                               <td colSpan={4}>
                                 <div className="crm-box">
                                   <div className="crm-grid">
                                     <div className="crm-profile">
-                                      <div className="crm-avatar"><Camera size={35} color="#94a3b8" /></div>
+                                      <div className="crm-avatar"><Camera size={35} /></div>
                                       <h4 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '5px' }}>{f.nome}</h4>
                                       <span className="badge-status badge-pago">ATIVO NA CORRENTE</span>
                                       <div style={{ marginTop: '20px', textAlign: 'left' }}>
@@ -263,7 +284,7 @@ export default function App() {
                                       </div>
                                     </div>
                                     <div className="crm-history">
-                                      <h4 style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}><Wallet size={20} color="#27ae60" /> Histórico Financeiro</h4>
+                                      <h4 style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}><Wallet size={20} color="var(--success)" /> Histórico Financeiro</h4>
                                       <div className="history-scroll">
                                         <table style={{ minWidth: '100%' }}>
                                           <thead>
@@ -271,7 +292,7 @@ export default function App() {
                                           </thead>
                                           <tbody>
                                             {historicoMensalidades.map((h, i) => (
-                                              <tr key={i} style={{ marginBottom: '0', padding: '10px', boxShadow: 'none', borderBottom: '1px solid #eee', borderRadius: '0' }}>
+                                              <tr key={i} style={{ marginBottom: '0', padding: '10px', boxShadow: 'none', borderBottom: '1px solid var(--border)', borderRadius: '0' }}>
                                                 <td data-label="Mês Ref."><strong>{h.ref}</strong></td>
                                                 <td data-label="Status">
                                                   {h.status === 'PAGO' && <span className="badge-status badge-pago"><CheckCircle2 size={14} /> PAGO</span>}

@@ -1,246 +1,351 @@
+/* ================= PALETA LIGHT (PADRÃO) ================= */
 :root {
-  --primary: #2d5a27;
-  --primary-dark: #1e3d1a;
-  --secondary: #3498db;
-  --danger: #e74c3c;
-  --warning: #f39c12;
-  --success: #27ae60;
-  --bg-main: #f8fafc;
-  --white: #ffffff;
-  --text-dark: #0f172a;
+  --primary: #b91c1c; 
+  --primary-hover: #991b1b;
+  --primary-light: #fef2f2; 
+  
+  --bg-main: #f8fafc; 
+  --bg-card: #ffffff;
+  --bg-sub: #f1f5f9;
+  
+  --text-dark: #1e293b; 
   --text-muted: #64748b;
   --border: #e2e8f0;
+  
+  --success: #15803d;
+  --danger: #b91c1c;
+  --warning: #b45309;
+  
   --sidebar-w: 260px;
   --header-h: 75px;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
+  
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.05);
+}
+
+/* ================= PALETA DARK MODE ================= */
+[data-theme="dark"] {
+  --primary: #dc2626;
+  --primary-hover: #ef4444;
+  --primary-light: #450a0a; 
+  
+  --bg-main: #0f172a; 
+  --bg-card: #1e293b; 
+  --bg-sub: #334155;  
+  
+  --text-dark: #f8fafc; 
+  --text-muted: #94a3b8; 
+  --border: #334155; 
+  
+  --success: #22c55e;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.3);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; outline: none; }
 
 body { 
-  font-family: 'Inter', system-ui, -apple-system, sans-serif; 
+  font-family: 'Inter', system-ui, sans-serif; 
   background-color: var(--bg-main); 
   color: var(--text-dark); 
-  line-height: 1.6;
-  overflow-x: hidden;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.3s, color 0.3s;
+  overflow-y: scroll; 
+  overflow-x: hidden;
+  width: 100%;
 }
 
-/* ================= SCROLLBARS CUSTOMIZADAS ================= */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
-/* ================= LAYOUT BASE ================= */
 .app-layout { display: flex; flex-direction: column; min-height: 100vh; }
 
 /* ================= NAVEGAÇÃO MOBILE ================= */
 .sidebar {
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: var(--bg-card);
   position: fixed;
   bottom: 0;
   width: 100%;
   height: var(--header-h);
   display: flex;
   z-index: 1000;
-  border-top: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 -4px 15px rgba(0,0,0,0.1);
+  border-top: 1px solid var(--border);
+  transition: background-color 0.3s, border-color 0.3s;
 }
 
-.sidebar h2 { display: none; }
-.sidebar nav { display: flex; width: 100%; justify-content: space-around; align-items: center; padding: 0 10px; }
+.brand-container { display: none; } 
+
+.sidebar nav { display: flex; width: 100%; justify-content: space-around; align-items: center; }
 
 .nav-item {
-  background: transparent; border: none; color: #94a3b8;
+  background: transparent; border: none; color: var(--text-muted);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  font-size: 0.75rem; gap: 4px; cursor: pointer; flex: 1; height: 100%;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  font-size: 0.75rem; font-weight: 600; gap: 4px; flex: 1; height: 100%;
+  transition: all 0.2s; cursor: pointer;
 }
 
-.nav-item.active { color: #4ade80; font-weight: 700; transform: translateY(-2px); }
-.nav-item:hover:not(.active) { color: #f8fafc; }
-.nav-item:active { transform: scale(0.95); }
+.nav-item.active { color: var(--primary); }
+.nav-item.active svg { transform: scale(1.1); }
+.nav-item:hover { color: var(--text-dark); }
 
-/* ================= ÁREA DE CONTEÚDO ================= */
+/* ================= ÁREA PRINCIPAL ================= */
 .main-content { 
   padding: 15px; 
   margin-bottom: 90px;
   width: 100%;
-  max-width: 1400px;
+  max-width: 1200px;
   margin-left: auto;
   margin-right: auto;
 }
 
 .page-header { margin-bottom: 25px; display: flex; flex-direction: column; gap: 15px; }
-.page-header h1 { font-size: 1.8rem; font-weight: 900; color: #0f172a; letter-spacing: -0.5px; }
-.header-actions { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+.header-top { display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 15px; }
+.page-header h1 { font-size: 1.6rem; font-weight: 900; color: var(--text-dark); transition: color 0.3s; margin: 0; line-height: 1.2; }
+.header-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+
+.theme-toggle-btn {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-sub); border: 1px solid var(--border);
+  color: var(--text-dark); 
+  width: 44px; height: 44px; flex-shrink: 0;
+  border-radius: 50%; cursor: pointer; transition: all 0.3s;
+}
+.theme-toggle-btn:hover { background: var(--border); transform: rotate(15deg); }
 
 /* ================= FILTROS E INPUTS ================= */
 .filter-box {
-  display: flex; align-items: center; gap: 12px; background: var(--white); 
-  padding: 12px 18px; border-radius: 14px; border: 1px solid var(--border); 
-  box-shadow: var(--shadow-sm); width: 100%; transition: box-shadow 0.2s;
+  display: flex; align-items: center; gap: 10px; background: var(--bg-card); 
+  padding: 12px 16px; border-radius: 12px; border: 1px solid var(--border); 
+  box-shadow: var(--shadow-sm); width: 100%; transition: all 0.3s;
 }
-.filter-box:hover { box-shadow: var(--shadow-md); }
-
 .filter-box select { 
   border: none; background: transparent; font-weight: 700; 
-  font-size: 1rem; color: var(--primary); width: 100%; cursor: pointer; outline: none;
+  font-size: 1rem; color: var(--text-dark); width: 100%; cursor: pointer; outline: none;
 }
+.filter-box select option { background: var(--bg-card); color: var(--text-dark); }
 
-.form-group { margin-bottom: 18px; }
-.form-group label { display: block; margin-bottom: 8px; font-weight: 600; font-size: 0.9rem; color: var(--text-muted); }
-.form-row { display: grid; grid-template-columns: 1fr; gap: 18px; }
+.form-group { margin-bottom: 16px; width: 100%; }
+.form-group label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.85rem; color: var(--text-muted); }
+.form-row { display: grid; grid-template-columns: 1fr; gap: 16px; width: 100%; }
 
 input, select { 
-  width: 100%; padding: 14px 16px; border-radius: 12px; 
-  border: 1px solid #cbd5e1; background: var(--bg-main); 
-  font-size: 1rem; color: var(--text-dark); transition: all 0.2s; outline: none;
+  width: 100%; padding: 12px 16px; border-radius: 10px; 
+  border: 1px solid var(--border); background: var(--bg-card); 
+  font-size: 1rem; color: var(--text-dark); transition: all 0.2s;
 }
-input:focus, select:focus { 
-  border-color: var(--primary); background: var(--white);
-  box-shadow: 0 0 0 4px rgba(45, 90, 39, 0.1); 
-}
+input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
 
 .btn-primary { 
-  background: var(--primary); color: var(--white); border: none; 
-  padding: 14px 24px; border-radius: 12px; font-weight: 700; font-size: 1rem;
+  background: var(--primary); color: #ffffff; border: none; 
+  padding: 14px 20px; border-radius: 10px; font-weight: 700; font-size: 1rem;
   cursor: pointer; display: flex; justify-content: center; align-items: center; 
-  gap: 10px; transition: all 0.2s; width: 100%; box-shadow: var(--shadow-sm);
+  gap: 10px; transition: 0.2s; width: 100%;
 }
-.btn-primary:hover { background: var(--primary-dark); box-shadow: var(--shadow-md); transform: translateY(-1px); }
-.btn-primary:active { transform: scale(0.98); }
 
 /* ================= CARDS ESTATÍSTICOS ================= */
-.stats-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 25px; }
+.stats-grid { display: grid; grid-template-columns: 1fr; gap: 15px; margin-bottom: 25px; width: 100%; }
 .stat-card { 
-  background: var(--white); padding: 24px; border-radius: 20px;
-  box-shadow: var(--shadow-md); border: 1px solid var(--border);
-  position: relative; overflow: hidden; transition: transform 0.2s;
+  background: var(--bg-card); padding: 20px; border-radius: 16px;
+  box-shadow: var(--shadow-sm); border: 1px solid var(--border);
+  border-top: 4px solid var(--text-muted); transition: all 0.3s;
 }
-.stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
-.stat-card::before {
-  content: ''; position: absolute; top: 0; left: 0; width: 5px; height: 100%;
-}
-.stat-card.blue::before { background: var(--secondary); }
-.stat-card.red::before { background: var(--danger); }
-.stat-card.green::before { background: var(--success); }
+.stat-card.blue { border-top-color: var(--secondary); }
+.stat-card.red { border-top-color: var(--primary); }
+.stat-card.green { border-top-color: var(--success); }
+.stat-card h3 { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 5px; font-weight: 700; }
+.stat-value { font-size: 1.8rem; font-weight: 900; color: var(--text-dark); }
 
-.stat-card h3 { font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; font-weight: 700; letter-spacing: 0.5px;}
-.stat-value { font-size: 2rem; font-weight: 900; color: #0f172a; letter-spacing: -1px; }
-
-/* ================= TABELAS (ESTRUTURA GERAL) ================= */
-.dashboard-grid { display: flex; flex-direction: column; gap: 30px; }
+/* ================= TABELAS RESPONSIVAS GERAIS ================= */
+.dashboard-grid { display: flex; flex-direction: column; gap: 20px; width: 100%; }
 
 .table-container { 
-  background: var(--white); border-radius: 20px; padding: 20px; 
-  box-shadow: var(--shadow-md); border: 1px solid var(--border); width: 100%;
+  background: var(--bg-card); border-radius: 16px; padding: 15px; 
+  box-shadow: var(--shadow-sm); border: 1px solid var(--border); width: 100%;
+  transition: all 0.3s;
 }
-.table-container h3 { 
-  margin-bottom: 20px; font-size: 1.25rem; display: flex; align-items: center; 
-  gap: 12px; font-weight: 800; color: #0f172a;
-}
+.table-container h3 { margin-bottom: 15px; font-size: 1.1rem; display: flex; align-items: center; gap: 10px; font-weight: 800; color: var(--text-dark); }
 
-.table-responsive { width: 100%; display: block; overflow: hidden; }
-table { width: 100%; border-collapse: collapse; }
-
-/* ================= O SEGREDO DO MOBILE (FLEXBOX FORÇADO) ================= */
+/* ================= A BLINDAGEM DO MOBILE (CÓDIGO ISOLADO) ================= */
 @media (max-width: 991px) {
-  .table-container { padding: 15px; }
-  
-  /* Mata o shrink-to-fit: força tabelas a usarem 100% de largura incondicionalmente */
-  .table-responsive table, 
-  .table-responsive tbody { 
-    display: flex; flex-direction: column; width: 100% !important; min-width: 100%; 
+  /* 1. Transforma a estrutura da Tabela de Fora (ignorando as de dentro) */
+  .table-responsive > table, 
+  .table-responsive > table > tbody, 
+  .table-responsive > table > tbody > tr, 
+  .table-responsive > table > tbody > tr > td { 
+    display: block !important; 
+    width: 100% !important; 
+    box-sizing: border-box !important; 
   }
-  .table-responsive thead { display: none; }
+  .table-responsive > table > thead { display: none !important; }
+  
+  /* 2. Cria os Cards para as linhas de fora */
+  .table-responsive > table > tbody > tr.main-row,
+  .table-responsive > table > tbody > tr:not(.expanded-crm-row):not(.main-row) {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 15px;
+    box-shadow: var(--shadow-sm);
+    overflow: hidden; 
+  }
+  
+  /* Remove a borda arredondada debaixo do Card quando abre o CRM */
+  .table-responsive > table > tbody > tr.main-row.is-expanded {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    border-bottom: none;
+    margin-bottom: 0;
+  }
+  
+  /* 3. Estiliza as células do Card de fora */
+  .table-responsive > table > tbody > tr > td {
+    position: relative;
+    padding: 12px 15px 12px 110px !important; /* Espaço para o rótulo */
+    text-align: right; 
+    color: var(--text-dark);
+    border-bottom: 1px dashed var(--border);
+    min-height: 48px;
+  }
+  .table-responsive > table > tbody > tr > td:last-child { border-bottom: none; }
+  
+  /* O Rótulo Injetado da Tabela de Fora */
+  .table-responsive > table > tbody > tr > td::before {
+    content: attr(data-label);
+    position: absolute;
+    left: 15px; top: 12px;
+    width: 85px; 
+    text-align: left; font-weight: 700; color: var(--text-muted);
+    font-size: 0.85rem;
+  }
 
-  /* CARDS: Todos os TRs viram colunas Flex com 100% de largura */
-  tr.main-row, 
-  tr:not(.main-row):not(.expanded-crm-row) { 
-    display: flex; flex-direction: column; width: 100% !important;
-    border: 1px solid var(--border); border-radius: 16px; 
-    margin-bottom: 16px; padding: 0; background: var(--white); 
-    box-shadow: var(--shadow-sm); transition: all 0.2s;
-    overflow: hidden;
+  /* 4. Célula dos Botões */
+  .table-responsive > table > tbody > tr > td.action-cell { 
+    padding: 15px !important; 
+    display: flex !important; justify-content: center !important; gap: 20px !important; 
+    background: var(--bg-sub); border-top: 1px solid var(--border);
   }
-  
-  /* Funde o card do membro com a gaveta do CRM */
-  tr.main-row.is-expanded {
-    margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; 
-    border-bottom: none; background: #f8fafc;
-  }
-  
-  tr.expanded-crm-row {
-    display: flex; flex-direction: column; width: 100% !important;
-    margin-top: 0; margin-bottom: 16px; padding: 0;
+  .table-responsive > table > tbody > tr > td.action-cell::before { display: none !important; }
+
+  /* 5. A Gaveta do CRM */
+  .table-responsive > table > tbody > tr.expanded-crm-row {
     border: 1px solid var(--border); border-top: none;
-    border-radius: 0 0 16px 16px; background: #f8fafc; box-shadow: var(--shadow-sm);
+    border-radius: 0 0 12px 12px; background: var(--bg-main);
+    margin-bottom: 15px;
   }
+  .table-responsive > table > tbody > tr.expanded-crm-row > td { padding: 0 !important; border: none !important; }
+  .crm-box { padding: 15px; width: 100%; box-sizing: border-box; }
 
-  tr.expanded-crm-row td { 
-    padding: 0 !important; display: block !important; width: 100%;
-    border: none !important; min-height: auto; 
-  }
-  tr.expanded-crm-row td:before { display: none !important; }
-
-  .crm-box {
-    margin-top: 0; border: none; border-top: 1px dashed #cbd5e1;
-    border-radius: 0 0 16px 16px; box-shadow: none; background: transparent; padding: 15px;
-  }
-
-  /* Células internas do card (Flex horizontais) */
-  td { 
-    display: flex; width: 100%; border: none; border-bottom: 1px dashed #e2e8f0; 
-    position: relative; padding: 12px 15px 12px 45% !important; 
-    text-align: right; font-size: 0.95rem; min-height: 48px; 
-    justify-content: flex-end; align-items: center; box-sizing: border-box;
-  }
-  td:last-child { border-bottom: none; }
-  
-  /* Rótulo de cada dado */
-  td:before {
-    content: attr(data-label); position: absolute; left: 15px; width: 40%; 
-    text-align: left; font-weight: 700; color: var(--text-muted); font-size: 0.85rem;
+/* ================= TABELA DE HISTÓRICO SEM BARRA DE ROLAGEM ================= */
+  .history-scroll { 
+    width: 100%; 
+    overflow: hidden !important; /* Assassina a barra de rolagem horizontal */
+    border: 1px solid var(--border); 
+    border-radius: 8px; 
+    margin-top: 15px; 
+    background: var(--bg-card); 
   }
   
-  /* Célula de ações alinhada e destacada */
-  .action-cell { 
-    justify-content: center !important; padding: 15px !important; 
-    background: #f8fafc; gap: 20px; border-top: 1px solid #e2e8f0; 
+  /* Desmancha a tabela interna e transforma em blocos 100% fluidos */
+  .history-scroll table,
+  .history-scroll thead,
+  .history-scroll tbody,
+  .history-scroll tr,
+  .history-scroll td {
+    display: block !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
   }
-  .action-cell:before { display: none !important; }
+  
+  /* Esconde o cabeçalho interno no mobile */
+  .history-scroll thead { display: none !important; } 
 
-  /* ================= BLINDA A TABELA INTERNA (HISTÓRICO) PARA NÃO QUEBRAR ================= */
-  .history-scroll { overflow-x: auto; width: 100%; border: 1px solid var(--border); border-radius: 8px; }
-  .history-scroll table { display: table !important; width: 100% !important; min-width: 320px !important; }
-  .history-scroll thead { display: table-header-group !important; }
-  .history-scroll tbody { display: table-row-group !important; width: 100% !important; }
-  .history-scroll tr { display: table-row !important; width: auto !important; margin: 0; padding: 0; border: none; border-bottom: 1px solid #eee; border-radius: 0; box-shadow: none; background: transparent; }
-  .history-scroll th { display: table-cell !important; padding: 10px 8px; font-size: 0.8rem; background: #f8fafc; text-align: left; border-bottom: 2px solid var(--border); }
-  .history-scroll td { display: table-cell !important; padding: 12px 8px !important; text-align: left !important; font-size: 0.85rem; border: none !important; justify-content: flex-start;}
-  .history-scroll td:before { display: none !important; }
+  /* Separa cada pagamento com uma linha mais grossa */
+  .history-scroll tr { 
+    border: none !important; 
+    border-bottom: 3px solid var(--bg-main) !important; 
+    background: transparent !important; 
+    padding: 10px 0 !important; 
+  }
+  .history-scroll tr:last-child { border-bottom: none !important; }
+
+  /* Cada dado do pagamento fica lado a lado (Rótulo <-espaço-> Valor) */
+  .history-scroll td { 
+    display: flex !important; 
+    flex-direction: row !important; 
+    justify-content: space-between !important; 
+    align-items: center !important;
+    padding: 6px 15px !important; 
+    border: none !important; 
+    color: var(--text-dark) !important; 
+    font-size: 0.85rem !important; 
+    text-align: right !important; 
+  }
+
+  /* O Rótulo (Mês Ref, Status, Data) ressurge no mobile */
+  .history-scroll td::before { 
+    content: attr(data-label);
+    display: block !important;
+    font-weight: 700;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    text-align: left;
+    margin: 0 !important; /* Remove qualquer margem que centralizava antes */
+  }
+
+  /* ================= CORREÇÃO DOS ÍCONES E BOTÕES (CENTRALIZAÇÃO ABSOLUTA) ================= */
+  
+  /* 1. Seta do Dropdown (Primeira Célula) */
+  tr:not(.expanded-crm-row) td:first-child {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    padding: 15px 15px 5px 15px !important; /* Mais perto do nome */
+    border-bottom: none !important; /* Tira a linha pra ficar parecendo um "puxador" do card */
+  }
+  
+  /* Mata o rótulo fantasma que empurrava a seta pro lado */
+  tr:not(.expanded-crm-row) td:first-child::before {
+    display: none !important;
+  }
+
+  /* 2. Botões de Ação (Última Célula) */
+  tr:not(.expanded-crm-row) td.action-cell {
+    display: flex !important;
+    flex-direction: row !important; /* Força os botões a ficarem lado a lado */
+    justify-content: center !important;
+    align-items: center !important;
+    padding: 15px !important;
+    background: var(--bg-sub);
+    border-top: 1px solid var(--border) !important;
+  }
+
+  /* Garante que a div de dentro (do React) obedeça o centro da tela */
+  tr:not(.expanded-crm-row) td.action-cell > div {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    width: 100% !important;
+    gap: 100px !important; /* Espaço bem confortável pro dedo não clicar errado */
+  }
 }
 
-/* ================= CRM EXPANSÍVEL (CONTEÚDO GERAL) ================= */
-.crm-grid { display: grid; grid-template-columns: 1fr; gap: 24px; }
+/* ================= CRM INTERNO (VISUAL GERAL) ================= */
+.crm-grid { display: grid; grid-template-columns: 1fr; gap: 20px; width: 100%; }
 
-.crm-profile { background: var(--white); padding: 24px; border-radius: 16px; border: 1px solid var(--border); text-align: center; box-shadow: var(--shadow-sm); }
-.crm-avatar { width: 90px; height: 90px; background: #f1f5f9; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; border: 4px solid var(--white); box-shadow: var(--shadow-md); }
-.crm-info-item { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px dashed #e2e8f0; font-size: 0.95rem; }
+.crm-profile { background: var(--bg-card); padding: 20px; border-radius: 12px; border: 1px solid var(--border); text-align: center; }
+.crm-avatar { width: 80px; height: 80px; background: var(--bg-sub); color: var(--text-muted); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px; border: 3px solid var(--bg-card); box-shadow: var(--shadow-sm); }
+.crm-info-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px dashed var(--border); font-size: 0.9rem; color: var(--text-dark); }
 
-.crm-history { background: var(--white); padding: 24px; border-radius: 16px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); overflow: hidden; }
-.history-scroll { max-height: 350px; overflow-y: auto; padding-right: 8px; }
+.crm-history { background: var(--bg-card); padding: 20px; border-radius: 12px; border: 1px solid var(--border); width: 100%; overflow: hidden; }
 
 /* ================= BADGES ================= */
-.badge-status { padding: 6px 14px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; display: inline-flex; align-items: center; gap: 6px; letter-spacing: 0.5px;}
-.badge-pago { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
-.badge-pendente { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
-.badge-adiantado { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+.badge-status { padding: 4px 10px; border-radius: 8px; font-size: 0.7rem; font-weight: 800; display: inline-flex; align-items: center; gap: 4px; letter-spacing: 0.5px;}
+.badge-pago { background: rgba(34, 197, 94, 0.2); color: var(--success); }
+.badge-pendente { background: var(--primary-light); color: var(--danger); }
+.badge-adiantado { background: rgba(56, 189, 248, 0.2); color: var(--warning); }
 
 /* ================= DESKTOP (PC) ================= */
 @media (min-width: 992px) {
@@ -248,43 +353,48 @@ table { width: 100%; border-collapse: collapse; }
   
   .sidebar { 
     width: var(--sidebar-w); height: 100vh; position: fixed; top: 0; left: 0;
-    flex-direction: column; padding: 40px 20px; box-shadow: none; 
-    border-right: 1px solid rgba(255,255,255,0.05); background: #0f172a;
-    backdrop-filter: none;
+    flex-direction: column; padding: 30px 20px; box-shadow: 2px 0 10px rgba(0,0,0,0.02); 
+    border-right: 1px solid var(--border); border-top: none;
   }
-  .sidebar h2 { display: block; color: #4ade80; font-size: 1.8rem; margin-bottom: 50px; text-align: center; font-weight: 900; letter-spacing: -1px; }
-  .sidebar nav { flex-direction: column; gap: 8px; align-items: stretch; }
-  .nav-item { flex-direction: row; padding: 16px 20px; font-size: 1rem; justify-content: flex-start; border-radius: 12px; gap: 16px; }
-  .nav-item.active { background: rgba(74, 222, 128, 0.1); color: #4ade80; }
-
-  .main-content { margin-left: var(--sidebar-w); padding: 50px; margin-bottom: 0; }
   
-  .page-header { flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 40px;}
-  .header-actions { flex-direction: row; align-items: center; width: auto; }
+  .brand-container { display: flex; flex-direction: column; align-items: center; gap: 5px; margin-bottom: 40px; text-align: center; }
+  .brand-logo { width: 85px; height: 85px; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary); padding: 2px; background: var(--white); box-shadow: var(--shadow-md);}
+  .sidebar h2 { display: block; color: var(--primary); font-size: 1.4rem; font-weight: 900; letter-spacing: -0.5px; transition: color 0.3s; margin-bottom: 0; }
+  .sidebar h5 { display: block; color: var(--text-muted); font-size: 0.75rem; font-weight: 500; line-height: 1.4; transition: color 0.3s; margin-top: 2px; }
+  
+  .sidebar nav { flex-direction: column; gap: 8px; align-items: stretch; }
+  .nav-item { flex-direction: row; padding: 14px 18px; font-size: 0.95rem; justify-content: flex-start; border-radius: 10px; gap: 12px; }
+  .nav-item.active { background: var(--primary-light); color: var(--primary); }
+  .nav-item:hover:not(.active) { background: var(--bg-sub); color: var(--text-dark); }
+
+  .main-content { margin-left: var(--sidebar-w); padding: 40px; margin-bottom: 0; max-width: 100%;}
+  
+  .page-header { flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 30px;}
+  .header-actions { flex-direction: row; align-items: center; width: auto; gap: 15px;}
+  .header-top { width: auto; }
   .filter-box { width: auto; }
   .btn-primary { width: auto; }
   
-  .stats-grid { grid-template-columns: repeat(3, 1fr); gap: 24px; }
-  .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: start; }
+  .stats-grid { grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; align-items: start; }
   .form-row { grid-template-columns: 1fr 1fr; gap: 20px; }
   
-  /* Trava Tabela Principal no PC */
-  .table-responsive > table { table-layout: fixed; }
+  .table-responsive { overflow: visible; }
+  table { display: table; width: 100%; border-collapse: collapse; table-layout: fixed; }
+  thead { display: table-header-group; }
+  tbody { display: table-row-group; }
   
-  tr, tr.main-row, tr:not(.main-row):not(.expanded-crm-row) { 
-    display: table-row; background: transparent; border: none; box-shadow: none; margin: 0; padding: 0; transition: background 0.2s; border-radius: 0;
-  }
-  tr.main-row:hover, tr:not(.main-row):not(.expanded-crm-row):hover { background: #f8fafc; }
-  tr.main-row.is-expanded { background: #f8fafc; }
+  tr { display: table-row; background: transparent; border: none; }
+  tr:hover { background: var(--bg-main); }
+  tr.is-expanded { background: var(--bg-main); }
   
-  tr.expanded-crm-row { display: table-row; background: transparent; border: none; box-shadow: none; margin: 0; padding: 0; }
-  tr.expanded-crm-row td { display: table-cell !important; padding: 0 !important; }
+  th { padding: 14px 16px; text-align: left; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; border-bottom: 2px solid var(--border); }
+  td { display: table-cell; text-align: left; padding: 16px !important; border-bottom: 1px solid var(--border); font-size: 0.95rem; color: var(--text-dark);}
+  td:before { display: none !important; }
+  .action-cell { background: transparent; justify-content: center !important; }
 
-  th { padding: 16px 20px; text-align: left; font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; border-bottom: 2px solid var(--border); background: #f8fafc; font-weight: 700; }
-  td { display: table-cell; text-align: left; padding: 20px !important; position: static; border-bottom: 1px solid var(--border); font-size: 1rem; min-height: auto; }
-  td:before { display: none; }
-  .action-cell { justify-content: flex-start !important; background: transparent; border-radius: 0; margin-top: 0; border: none;}
-
-  .crm-grid { grid-template-columns: 1fr 2fr; gap: 30px; }
-  .crm-box { margin-top: 0; border-top: none; border-bottom: 1px solid var(--border); border-radius: 0; box-shadow: none; padding: 30px;}
+  tr.expanded-crm-row { display: table-row; }
+  tr.expanded-crm-row td { padding: 0 !important; }
+  .crm-box { margin-top: 0; border: none; border-bottom: 1px solid var(--border); border-radius: 0; padding: 30px; background: transparent;}
+  .crm-grid { grid-template-columns: 1fr 2.5fr; gap: 30px; }
 }
