@@ -437,7 +437,7 @@ export default function App() {
           </div>
         )}
 
-        {telaAtiva === 'financeiro' && <LancamentoFinanceiro mesFiltro={mesReferencia}/>}
+        {telaAtiva === 'financeiro' && <LancamentoFinanceiro mesFiltro={mesReferencia} isAdmin={isAdmin} />}
       </main>
     </div>
   )
