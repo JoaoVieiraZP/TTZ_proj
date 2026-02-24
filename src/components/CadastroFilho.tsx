@@ -1,99 +1,101 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { supabase } from '../config/supabase'
-import { UserPlus, Save, X } from 'lucide-react'
-
-const maskData = (v: string) => {
-  let r = v.replace(/\D/g, '').slice(0, 8)
-  if (r.length > 4) return `${r.slice(0, 2)}/${r.slice(2, 4)}/${r.slice(4)}`
-  if (r.length > 2) return `${r.slice(0, 2)}/${r.slice(2)}`
-  return r
-}
-
-const paraDB = (br: string) => {
-  if (!br || br.length !== 10) return null
-  const [d, m, y] = br.split('/')
-  return `${y}-${m}-${d}`
-}
-
-const paraBR = (db: string) => {
-  if (!db) return ''
-  const [y, m, d] = db.split('T')[0].split('-')
-  return `${d}/${m}/${y}`
-}
+import { Save, X } from 'lucide-react'
 
 export function CadastroFilho({ filhoEditando, onSucesso, onCancelar }: any) {
-  const [mensagem, setMensagem] = useState('')
-  const [formData, setFormData] = useState({ nome: '', data_nascimento: '', data_entrada: '' })
+  const [nome, setNome] = useState('')
+  const [dataNascimento, setDataNascimento] = useState('')
+  const [dataEntrada, setDataEntrada] = useState('')
+  const [isento, setIsento] = useState(false)
+  const [loading, setLoading] = useState(false)
 
+  // Se estiver editando, preenche os campos com os dados do filho
   useEffect(() => {
     if (filhoEditando) {
-      setFormData({
-        nome: filhoEditando.nome,
-        data_nascimento: paraBR(filhoEditando.data_nascimento),
-        data_entrada: paraBR(filhoEditando.data_entrada)
-      })
-    } else {
-      setFormData({ nome: '', data_nascimento: '', data_entrada: '' })
+      setNome(filhoEditando.nome)
+      setDataNascimento(filhoEditando.data_nascimento?.split('T')[0] || '')
+      setDataEntrada(filhoEditando.data_entrada?.split('T')[0] || '')
+      setIsento(filhoEditando.isento || false)
     }
   }, [filhoEditando])
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault()
-    setMensagem('Processando...')
-
-    const payload = {
-      nome: formData.nome,
-      data_nascimento: formData.data_nascimento.length === 10 ? paraDB(formData.data_nascimento) : null,
-      data_entrada: formData.data_entrada.length === 10 ? paraDB(formData.data_entrada) : null
+    setLoading(true)
+    
+    const dados = { 
+      nome, 
+      data_nascimento: dataNascimento, 
+      data_entrada: dataEntrada,
+      isento 
     }
 
     if (filhoEditando) {
-      const { error } = await supabase.from('filhos').update(payload).eq('id', filhoEditando.id)
-      if (error) setMensagem('Erro: ' + error.message)
-      else { setMensagem('✅ Atualizado!'); onSucesso() }
+      await supabase.from('filhos').update(dados).eq('id', filhoEditando.id)
     } else {
-      const { error } = await supabase.from('filhos').insert([payload])
-      if (error) setMensagem('Erro: ' + error.message)
-      else {
-        setMensagem('✅ Cadastrado!')
-        setFormData({ nome: '', data_nascimento: '', data_entrada: '' })
-        onSucesso()
-      }
+      await supabase.from('filhos').insert([dados])
     }
-    setTimeout(() => setMensagem(''), 3000)
+    
+    setLoading(false)
+    onSucesso() // Fecha o formulário e recarrega a lista
   }
 
   return (
-    <div>
-      <h3><UserPlus size={20} color="#3498db" /> {filhoEditando ? 'Editar Membro' : 'Novo Membro'}</h3>
-      <form onSubmit={salvar}>
+    <form onSubmit={salvar} style={{ padding: '10px' }}>
+      <div className="form-group">
+        <label>Nome Completo do Membro</label>
+        <input 
+          type="text" 
+          required 
+          value={nome} 
+          onChange={e => setNome(e.target.value)} 
+          placeholder="Ex: João Pedro Vieira"
+        />
+      </div>
+      
+      <div className="form-row">
         <div className="form-group">
-          <label>Nome Completo</label>
-          <input type="text" value={formData.nome} onChange={(e) => setFormData({...formData, nome: e.target.value})} required />
+          <label>Data de Nascimento</label>
+          <input 
+            type="date" 
+            required 
+            value={dataNascimento} 
+            onChange={e => setDataNascimento(e.target.value)} 
+          />
         </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label>Nascimento (DD/MM/AAAA)</label>
-            <input type="text" placeholder="00/00/0000" value={formData.data_nascimento} onChange={(e) => setFormData({...formData, data_nascimento: maskData(e.target.value)})} />
-          </div>
-          <div className="form-group">
-            <label>Entrada (DD/MM/AAAA)</label>
-            <input type="text" placeholder="00/00/0000" value={formData.data_entrada} onChange={(e) => setFormData({...formData, data_entrada: maskData(e.target.value)})} required />
-          </div>
+        <div className="form-group">
+          <label>Data de Entrada na Casa</label>
+          <input 
+            type="date" 
+            required 
+            value={dataEntrada} 
+            onChange={e => setDataEntrada(e.target.value)} 
+          />
         </div>
-        
-        <div className="form-row">
-          <button type="submit" className="btn-primary" style={{ background: filhoEditando ? '#f39c12' : 'var(--primary)' }}>
-            <Save size={18} /> {filhoEditando ? 'Atualizar' : 'Cadastrar'}
-          </button>
-          {filhoEditando && (
-            <button type="button" onClick={onCancelar} className="btn-primary" style={{ background: '#e74c3c' }}>
-              <X size={18} /> Cancelar
-            </button>
-          )}
-        </div>
-        {mensagem && <p style={{marginTop: '15px', textAlign: 'center', fontWeight: 'bold'}}>{mensagem}</p>}
-      </form>
-    </div>
+      </div>
+
+      {/* CHECKBOX DE ISENÇÃO */}
+      <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '15px', justifyContent: 'center', background: 'var(--bg-sub)', padding: '15px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+        <input 
+          type="checkbox" 
+          id="isento" 
+          checked={isento} 
+          onChange={e => setIsento(e.target.checked)} 
+          style={{ width: '22px', height: '22px', cursor: 'pointer' }}
+        />
+        <label htmlFor="isento" style={{ margin: 0, cursor: 'pointer', fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-dark)' }}>
+          Membro Isento de Mensalidade
+        </label>
+      </div>
+      
+      <div style={{ display: 'flex', gap: '15px', marginTop: '30px' }}>
+        <button type="button" onClick={onCancelar} className="btn-primary" style={{ background: 'var(--text-muted)' }}>
+          <X size={20}/> Cancelar
+        </button>
+        <button type="submit" disabled={loading} className="btn-primary">
+          <Save size={20}/> {loading ? 'Salvando...' : 'Salvar Ficha'}
+        </button>
+      </div>
+    </form>
   )
 }

@@ -346,6 +346,7 @@ input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px 
 .badge-pago { background: rgba(34, 197, 94, 0.2); color: var(--success); }
 .badge-pendente { background: var(--primary-light); color: var(--danger); }
 .badge-adiantado { background: rgba(56, 189, 248, 0.2); color: var(--warning); }
+.badge-isento { background: var(--bg-sub); color: var(--text-muted); border: 1px solid var(--border); }
 
 /* ================= DESKTOP (PC) ================= */
 @media (min-width: 992px) {
@@ -397,4 +398,47 @@ input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px 
   tr.expanded-crm-row td { padding: 0 !important; }
   .crm-box { margin-top: 0; border: none; border-bottom: 1px solid var(--border); border-radius: 0; padding: 30px; background: transparent;}
   .crm-grid { grid-template-columns: 1fr 2.5fr; gap: 30px; }
+}
+
+/* ================= TELA DE LOGIN ================= */
+.login-wrapper {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 100vh; width: 100%; background: var(--bg-main);
+  padding: 20px; box-sizing: border-box;
+}
+
+.login-card {
+  width: 100%; max-width: 420px; background: var(--bg-card);
+  padding: 40px 25px; border-radius: 20px; box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border); box-sizing: border-box;
+}
+
+/* Força a Logo e os textos a ficarem bonitos no mobile dentro do Login */
+.login-card .brand-container { 
+  display: flex; flex-direction: column; align-items: center; gap: 5px; 
+  margin-bottom: 30px; text-align: center; 
+}
+.login-card .brand-logo { 
+  width: 80px; height: 80px; border-radius: 50%; object-fit: cover; 
+  border: 2px solid var(--primary); padding: 2px; background: var(--white); box-shadow: var(--shadow-md);
+}
+.login-card h2 { 
+  display: block; color: var(--primary); font-size: 1.4rem; font-weight: 900; 
+  letter-spacing: -0.5px; margin-bottom: 0; 
+}
+.login-card h5 { 
+  display: block; color: var(--text-muted); font-size: 0.75rem; font-weight: 500; 
+  line-height: 1.4; margin-top: 2px; 
+}
+
+/* Inputs do Login */
+.input-with-icon { position: relative; display: flex; align-items: center; width: 100%; }
+.input-with-icon svg { position: absolute; left: 16px; color: var(--text-muted); }
+.input-with-icon input { padding-left: 50px; width: 100%; }
+
+.error-msg { 
+  background: var(--primary-light); color: var(--danger); 
+  padding: 12px 15px; border-radius: 10px; margin-bottom: 20px;
+  display: flex; align-items: center; gap: 10px; font-size: 0.9rem; font-weight: 700;
+  border: 1px solid rgba(239, 68, 68, 0.2);
 }

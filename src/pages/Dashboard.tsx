@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { obterResumoPorCategoria } from '../services/DashboardService.js';
 import '../styles/Dashboard.css';
 
