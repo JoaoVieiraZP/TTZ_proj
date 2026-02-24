@@ -9,7 +9,6 @@ export function CadastroFilho({ filhoEditando, onSucesso, onCancelar }: any) {
   const [isento, setIsento] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  // Se estiver editando, preenche os campos com os dados do filho
   useEffect(() => {
     if (filhoEditando) {
       setNome(filhoEditando.nome)
@@ -23,11 +22,13 @@ export function CadastroFilho({ filhoEditando, onSucesso, onCancelar }: any) {
     e.preventDefault()
     setLoading(true)
     
+    // O ativo: true garante que o cara novo sempre nasce ativo
     const dados = { 
       nome, 
       data_nascimento: dataNascimento, 
       data_entrada: dataEntrada,
-      isento 
+      isento,
+      ativo: true 
     }
 
     if (filhoEditando) {
@@ -37,7 +38,7 @@ export function CadastroFilho({ filhoEditando, onSucesso, onCancelar }: any) {
     }
     
     setLoading(false)
-    onSucesso() // Fecha o formulário e recarrega a lista
+    onSucesso()
   }
 
   return (
@@ -74,7 +75,6 @@ export function CadastroFilho({ filhoEditando, onSucesso, onCancelar }: any) {
         </div>
       </div>
 
-      {/* CHECKBOX DE ISENÇÃO */}
       <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '15px', justifyContent: 'center', background: 'var(--bg-sub)', padding: '15px', borderRadius: '10px', border: '1px solid var(--border)' }}>
         <input 
           type="checkbox" 
