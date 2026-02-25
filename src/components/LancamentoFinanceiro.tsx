@@ -192,7 +192,7 @@ export function LancamentoFinanceiro({
                 <option value="FESTA">Festa / Evento</option>
                 <option value="BEBIDA_FUMO">Bebidas e Fumos</option>
                 <option value="VELA">Compra de Velas</option>
-                <option value="OUTROS">Outras Despesas/Receitas</option>
+                <option value="OUTROS">Outros</option>
               </select>
             </div>
 

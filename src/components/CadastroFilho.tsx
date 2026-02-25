@@ -7,7 +7,8 @@ export function CadastroFilho({ filhoEditando, onSucesso, onCancelar }: any) {
   const [dataNascimento, setDataNascimento] = useState('')
   const [dataEntrada, setDataEntrada] = useState('')
   const [isento, setIsento] = useState(false)
-  const [fotoUrl, setFotoUrl] = useState('') // <--- NOVO ESTADO DA FOTO
+  const [diaVencimento, setDiaVencimento] = useState(10) // <--- ESTADO DO VENCIMENTO
+  const [fotoUrl, setFotoUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
 
@@ -17,11 +18,11 @@ export function CadastroFilho({ filhoEditando, onSucesso, onCancelar }: any) {
       setDataNascimento(filhoEditando.data_nascimento?.split('T')[0] || '')
       setDataEntrada(filhoEditando.data_entrada?.split('T')[0] || '')
       setIsento(filhoEditando.isento || false)
-      setFotoUrl(filhoEditando.foto_url || '') // <--- PUXA A FOTO NA EDIÇÃO
+      setDiaVencimento(filhoEditando.dia_vencimento || 10) // <--- PUXA O DIA NA EDIÇÃO
+      setFotoUrl(filhoEditando.foto_url || '')
     }
   }, [filhoEditando])
 
-  // FUNÇÃO DE UPLOAD DE FOTO DO MEMBRO
   async function handleUploadFoto(e: React.ChangeEvent<HTMLInputElement>) {
     try {
       setUploading(true)
@@ -48,12 +49,12 @@ export function CadastroFilho({ filhoEditando, onSucesso, onCancelar }: any) {
     e.preventDefault()
     setLoading(true)
     
-    // INCLUÍDO O FOTO_URL NO PACOTE DO BANCO DE DADOS
     const dados = { 
       nome, 
       data_nascimento: dataNascimento, 
       data_entrada: dataEntrada,
       isento,
+      dia_vencimento: Number(diaVencimento), // <--- SALVA NO BANCO
       foto_url: fotoUrl, 
       ativo: true 
     }
@@ -71,7 +72,6 @@ export function CadastroFilho({ filhoEditando, onSucesso, onCancelar }: any) {
   return (
     <form onSubmit={salvar} style={{ padding: '10px' }}>
       
-      {/* ================= ÁREA DA FOTO ================= */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '25px', gap: '10px' }}>
         {fotoUrl ? (
           <img src={fotoUrl} alt="Foto do Membro" style={{ width: '100px', height: '100px', borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--primary)' }} />
@@ -88,7 +88,6 @@ export function CadastroFilho({ filhoEditando, onSucesso, onCancelar }: any) {
           </label>
         </div>
       </div>
-      {/* ================================================= */}
 
       <div className="form-group">
         <label>Nome Completo do Membro</label>
@@ -106,11 +105,19 @@ export function CadastroFilho({ filhoEditando, onSucesso, onCancelar }: any) {
         </div>
       </div>
 
-      <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '15px', justifyContent: 'center', background: 'var(--bg-sub)', padding: '15px', borderRadius: '10px', border: '1px solid var(--border)' }}>
-        <input type="checkbox" id="isento" checked={isento} onChange={e => setIsento(e.target.checked)} style={{ width: '22px', height: '22px', cursor: 'pointer' }} />
-        <label htmlFor="isento" style={{ margin: 0, cursor: 'pointer', fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-dark)' }}>
-          Membro Isento de Mensalidade
-        </label>
+      {/* === LINHA DO VENCIMENTO E ISENÇÃO === */}
+      <div className="form-row" style={{ alignItems: 'center', marginTop: '10px' }}>
+        <div className="form-group" style={{ flex: 1 }}>
+          <label>Dia de Vencimento</label>
+          <input type="number" min="1" max="31" required value={diaVencimento} onChange={e => setDiaVencimento(Number(e.target.value))} placeholder="Ex: 10" />
+        </div>
+        
+        <div className="form-group" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--bg-sub)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', margin: 0 }}>
+          <input type="checkbox" id="isento" checked={isento} onChange={e => setIsento(e.target.checked)} style={{ width: '22px', height: '22px', cursor: 'pointer' }} />
+          <label htmlFor="isento" style={{ margin: 0, cursor: 'pointer', fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-dark)' }}>
+            Isento de Mensalidade
+          </label>
+        </div>
       </div>
       
       <div style={{ display: 'flex', gap: '15px', marginTop: '30px' }}>
