@@ -3,13 +3,14 @@ import { obterInadimplentes } from './services/DashboardService'
 import { supabase } from './config/supabase'
 import { CadastroFilho } from './components/CadastroFilho'
 import { LancamentoFinanceiro } from './components/LancamentoFinanceiro'
+import { GestaoFestas } from './components/GestaoFestas'
 import { Login } from './components/Login'
 import { PerfilUsuario } from './components/PerfilUsuario'
 import { 
   LayoutDashboard, Users, Wallet, AlertCircle, List, Clock, 
   CalendarDays, Pencil, UserPlus, ChevronDown, 
   ChevronUp, Camera, CheckCircle2, FastForward,
-  Moon, Sun, LogOut, Search, UserMinus, UserCheck, User, AlertTriangle
+  Moon, Sun, LogOut, Search, UserMinus, UserCheck, User, AlertTriangle, PartyPopper
 } from 'lucide-react'
 import './App.css'
 
@@ -28,10 +29,12 @@ export default function App() {
   ]
   const isAdmin = adminEmails.includes(session?.user?.email)
 
+  // VOLTAMOS PARA A MATEMÁTICA SIMPLES E LIMPA!
   const [resumo, setResumo] = useState({ totalBruto: 0, gastos: 0, lucro: 0, saldoAcumulado: 0 })
+  
   const [pendentes, setPendentes] = useState<any[]>([])
   const [todosFilhos, setTodosFilhos] = useState<any[]>([])
-  const [telaAtiva, setTelaAtiva] = useState<'dashboard' | 'filhos' | 'financeiro' | 'perfil'>('dashboard')
+  const [telaAtiva, setTelaAtiva] = useState<'dashboard' | 'filhos' | 'financeiro' | 'perfil' | 'festas'>('dashboard')
   const [mesesDisponiveis, setMesesDisponiveis] = useState<any[]>([])
   
   const [mostrarFormFilho, setMostrarFormFilho] = useState(false)
@@ -151,7 +154,6 @@ export default function App() {
     if (session) carregarDados() 
   }, [telaAtiva, mesReferencia, session])
 
-
   const calcularHistorico = async (filho: any) => {
     if (!filho) return;
     
@@ -181,12 +183,8 @@ export default function App() {
         let statusMensalidade = 'PENDENTE';
         
         if (pagou) {
-          // LENDO A COLUNA OFICIAL DO BANCO:
-          if (pagou.is_isencao === true) {
-            statusMensalidade = 'ISENTO';
-          } else {
-            statusMensalidade = 'PAGO';
-          }
+          if (pagou.is_isencao === true) statusMensalidade = 'ISENTO';
+          else statusMensalidade = 'PAGO';
         } else if (filho.isento) {
           statusMensalidade = 'ISENTO';
         } else {
@@ -196,9 +194,7 @@ export default function App() {
           const hoje = new Date();
           hoje.setHours(0,0,0,0);
 
-          if (hoje > dataVencimento) {
-            statusMensalidade = 'VENCIDA';
-          }
+          if (hoje > dataVencimento) statusMensalidade = 'VENCIDA';
         }
 
         histGerado.push({ ref: refOriginal, status: statusMensalidade, dt: pagou ? pagou.data_pagamento : null });
@@ -243,9 +239,7 @@ export default function App() {
   useEffect(() => {
     if (filhoExpandido) {
       const filhoAtualizado = todosFilhos.find(f => f.id === filhoExpandido);
-      if (filhoAtualizado) {
-        calcularHistorico(filhoAtualizado).catch(console.error);
-      }
+      if (filhoAtualizado) calcularHistorico(filhoAtualizado).catch(console.error);
     }
   }, [todosFilhos, filhoExpandido]);
 
@@ -277,6 +271,9 @@ export default function App() {
           <button className={`nav-item ${telaAtiva === 'financeiro' ? 'active' : ''}`} onClick={() => setTelaAtiva('financeiro')}>
             <Wallet size={24}/> Caixa
           </button>
+          <button className={`nav-item ${telaAtiva === 'festas' ? 'active' : ''}`} onClick={() => setTelaAtiva('festas')}>
+            <PartyPopper size={24}/> Festas
+          </button>
         </nav>
       </aside>
 
@@ -284,7 +281,10 @@ export default function App() {
         <header className="page-header">
           <div className="header-top">
             <h1>
-              {telaAtiva === 'dashboard' ? 'Painel Geral' : telaAtiva === 'filhos' ? 'Gestão da Corrente' : telaAtiva === 'perfil' ? 'Meu Perfil' : 'Fluxo de Caixa'}
+              {telaAtiva === 'dashboard' ? 'Painel Geral' : 
+               telaAtiva === 'filhos' ? 'Gestão da Corrente' : 
+               telaAtiva === 'perfil' ? 'Meu Perfil' : 
+               telaAtiva === 'festas' ? 'Gestão de Festas' : 'Fluxo de Caixa'}
             </h1>
             <div style={{display: 'flex', gap: '10px'}}>
               <button className="theme-toggle-btn" onClick={alternarTema} title="Mudar Tema">
@@ -320,6 +320,7 @@ export default function App() {
         {telaAtiva === 'dashboard' && (
           <div style={{width: '100%'}}>
             
+            {/* O LAYOUT CLÁSSICO E LIMPO DE VOLTA! */}
             <section className="stats-grid">
               <div className="stat-card blue">
                 <h3>Total Entradas ({mesReferencia})</h3>
@@ -580,7 +581,7 @@ export default function App() {
         )}
 
         {telaAtiva === 'financeiro' && <LancamentoFinanceiro mesFiltro={mesReferencia} isAdmin={isAdmin}/>}
-        
+        {telaAtiva === 'festas' && <GestaoFestas isAdmin={isAdmin}/>}
         {telaAtiva === 'perfil' && <PerfilUsuario session={session} />}
       </main>
     </div>

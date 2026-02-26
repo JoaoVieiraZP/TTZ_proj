@@ -14,6 +14,7 @@ import {
   CalendarDays,
   Tag,
   AlignLeft,
+  PartyPopper
 } from "lucide-react";
 
 const maskData = (v: string) => {
@@ -38,10 +39,11 @@ export function LancamentoFinanceiro({
 }) {
   const [filhos, setFilhos] = useState<any[]>([]);
   const [historico, setHistorico] = useState<any[]>([]);
+  const [todasFestas, setTodasFestas] = useState<any[]>([]); // <-- NOVO: Guarda as festas
+  
   const [idEdicao, setIdEdicao] = useState<number | null>(null);
   const [outraCat, setOutraCat] = useState("");
   const [lancamentoExpandido, setLancamentoExpandido] = useState<number | null>(null);
-  
   const [isencaoMes, setIsencaoMes] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -51,20 +53,19 @@ export function LancamentoFinanceiro({
     mes_referencia: mesFiltro === "TODOS" ? "" : mesFiltro,
     data_pagamento: "",
     filho_id: "",
+    festa_id: "", // <-- NOVO: Ponte com a festa
     descricao: "",
   });
 
   async function carregar() {
-    const { data: f } = await supabase
-      .from("filhos")
-      .select("id, nome, ativo")
-      .order("nome");
+    const { data: f } = await supabase.from("filhos").select("id, nome, ativo").order("nome");
     setFilhos(f || []);
 
-    let q = supabase
-      .from("financeiro")
-      .select("*")
-      .order("id", { ascending: false });
+    // Busca as festas para popular o campo
+    const { data: festas } = await supabase.from("festas").select("id, nome, ativa").order("data_evento", { ascending: false });
+    setTodasFestas(festas || []);
+
+    let q = supabase.from("financeiro").select("*").order("id", { ascending: false });
     if (mesFiltro !== "TODOS") q = q.eq("mes_referencia", mesFiltro);
     const { data: h } = await q.limit(50);
     setHistorico(h || []);
@@ -83,6 +84,11 @@ export function LancamentoFinanceiro({
       return;
     }
 
+    if (formData.categoria === "FESTA" && !formData.festa_id) {
+      alert("Por favor, selecione a qual festa este lançamento pertence!");
+      return;
+    }
+
     const [d, m, y] = formData.data_pagamento.split("/");
     const valorFinal = isencaoMes ? 0 : parseFloat(formData.valor);
 
@@ -92,6 +98,7 @@ export function LancamentoFinanceiro({
       data_pagamento: `${y}-${m}-${d}`,
       categoria: formData.categoria === "OUTROS" ? outraCat : formData.categoria,
       filho_id: formData.filho_id || null,
+      festa_id: formData.categoria === "FESTA" ? formData.festa_id : null, // Só manda ID da festa se a categoria for FESTA
       descricao: isencaoMes && !formData.descricao ? "Isenção concedida neste mês" : formData.descricao,
       is_isencao: isencaoMes 
     };
@@ -109,6 +116,7 @@ export function LancamentoFinanceiro({
       mes_referencia: mesFiltro === "TODOS" ? "" : mesFiltro,
       data_pagamento: "",
       filho_id: "",
+      festa_id: "",
       descricao: "",
     });
     setIdEdicao(null);
@@ -209,6 +217,32 @@ export function LancamentoFinanceiro({
               </select>
             </div>
 
+            {/* === NOVO: CAIXA ESPECÍFICA PARA VINCULAR A FESTA === */}
+            {formData.categoria === "FESTA" && (
+              <div className="form-group" style={{ background: 'rgba(139, 92, 246, 0.05)', padding: '15px', borderRadius: '8px', border: '1px solid #8b5cf6', marginTop: '10px' }}>
+                <label style={{ color: '#8b5cf6', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <PartyPopper size={18} /> Vincular a qual Evento/Festa?
+                </label>
+                <select
+                  value={formData.festa_id}
+                  onChange={(e) => setFormData({ ...formData, festa_id: e.target.value })}
+                  style={{ borderColor: '#8b5cf6' }}
+                  required
+                >
+                  <option value="">Selecione uma festa...</option>
+                  {/* Regra de Ouro: Mostrar as ativas, OU a que já está salva na edição */}
+                  {todasFestas
+                    .filter(f => f.ativa || String(f.id) === String(formData.festa_id))
+                    .map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.nome} {f.ativa === false ? '(Concluída)' : ''}
+                      </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {/* ======================================================= */}
+
             {formData.categoria === "MENSALIDADE" && (
               <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--bg-sub)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                 <input 
@@ -223,7 +257,7 @@ export function LancamentoFinanceiro({
                   style={{ width: '22px', height: '22px', cursor: 'pointer' }}
                 />
                 <label htmlFor="isencaoMes" style={{ margin: 0, cursor: 'pointer', fontWeight: 'bold', color: 'var(--text-dark)' }}>
-                  Isentar membro neste mês
+                  Isentar membro neste mês (Marcador Oficial)
                 </label>
               </div>
             )}
@@ -263,7 +297,7 @@ export function LancamentoFinanceiro({
               <textarea
                 value={formData.descricao}
                 onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
-                placeholder={isencaoMes ? "Isenção concedida neste mês" : "Ex: 1kg Vela Branca"}
+                placeholder={isencaoMes ? "Isenção concedida neste mês" : "Ex: 1kg Vela Branca / Pgto de Cota"}
                 rows={2}
                 style={{
                   width: "100%",
@@ -301,7 +335,8 @@ export function LancamentoFinanceiro({
                       valor: "",
                       data_pagamento: "",
                       descricao: "",
-                      filho_id: "", // Reseta o ID pra não travar o inativo no form limpo
+                      filho_id: "",
+                      festa_id: "",
                     });
                   }}
                   className="btn-primary"
@@ -362,6 +397,7 @@ export function LancamentoFinanceiro({
               ) : (
                 historico.map((h) => {
                   const filhoVinculado = filhos.find((f) => f.id === h.filho_id);
+                  const festaVinculada = todasFestas.find((f) => f.id === h.festa_id); // Puxa a festa!
 
                   return (
                     <React.Fragment key={h.id}>
@@ -380,7 +416,10 @@ export function LancamentoFinanceiro({
                         <td data-label="Mês Ref.">
                           <strong>{h.mes_referencia}</strong>
                         </td>
-                        <td data-label="Categoria">{h.categoria}</td>
+                        <td data-label="Categoria">
+                          {h.categoria} 
+                          {festaVinculada && <span style={{display: 'block', fontSize: '0.75rem', color: '#8b5cf6', fontWeight: 'bold'}}>{festaVinculada.nome}</span>}
+                        </td>
                         <td
                           data-label="Valor"
                           style={{
@@ -404,6 +443,7 @@ export function LancamentoFinanceiro({
                                     mes_referencia: h.mes_referencia,
                                     data_pagamento: h.data_pagamento.split("-").reverse().join("/"),
                                     filho_id: h.filho_id || "",
+                                    festa_id: h.festa_id || "", // Carrega a festa na edição!
                                     descricao: h.descricao || "",
                                   });
                                   if (!["MENSALIDADE", "FESTA", "BEBIDA_FUMO", "VELA"].includes(h.categoria)) setOutraCat(h.categoria);
@@ -452,12 +492,23 @@ export function LancamentoFinanceiro({
 
                                 <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
                                   <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "5px" }}>
-                                    <User size={16} /> Vínculo:
+                                    <User size={16} /> Vínculo Pessoal:
                                   </span>
                                   <div style={{ fontWeight: 800, color: filhoVinculado ? "var(--primary)" : "var(--text-dark)" }}>
                                     {filhoVinculado ? `${filhoVinculado.nome} ${filhoVinculado.ativo === false ? '(Inativo)' : ''}` : "Lançamento Geral"}
                                   </div>
                                 </div>
+                                
+                                {festaVinculada && (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                                    <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "5px" }}>
+                                      <PartyPopper size={16} /> Vínculo de Festa:
+                                    </span>
+                                    <div style={{ fontWeight: 800, color: "#8b5cf6" }}>
+                                      {festaVinculada.nome}
+                                    </div>
+                                  </div>
+                                )}
 
                                 <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
                                   <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "5px" }}>
