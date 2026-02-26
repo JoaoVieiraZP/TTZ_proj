@@ -2,12 +2,27 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../config/supabase'
 import { Save, X, UploadCloud, User } from 'lucide-react'
 
+// 1. Trouxemos a máscara de data para cá!
+const maskData = (v: string) => {
+  let r = v.replace(/\D/g, "").slice(0, 8);
+  if (r.length > 4) return `${r.slice(0, 2)}/${r.slice(2, 4)}/${r.slice(4)}`;
+  if (r.length > 2) return `${r.slice(0, 2)}/${r.slice(2)}`;
+  return r;
+};
+
+// Função para formatar a data que vem do banco (AAAA-MM-DD) para a tela (DD/MM/AAAA)
+const formatForInput = (dateStr: string) => {
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('T')[0].split('-');
+  return `${d}/${m}/${y}`;
+};
+
 export function CadastroFilho({ filhoEditando, onSucesso, onCancelar }: any) {
   const [nome, setNome] = useState('')
   const [dataNascimento, setDataNascimento] = useState('')
   const [dataEntrada, setDataEntrada] = useState('')
   const [isento, setIsento] = useState(false)
-  const [diaVencimento, setDiaVencimento] = useState(10) // <--- ESTADO DO VENCIMENTO
+  const [diaVencimento, setDiaVencimento] = useState(10)
   const [fotoUrl, setFotoUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -15,10 +30,11 @@ export function CadastroFilho({ filhoEditando, onSucesso, onCancelar }: any) {
   useEffect(() => {
     if (filhoEditando) {
       setNome(filhoEditando.nome)
-      setDataNascimento(filhoEditando.data_nascimento?.split('T')[0] || '')
-      setDataEntrada(filhoEditando.data_entrada?.split('T')[0] || '')
+      // Traduz do Banco (AAAA-MM-DD) pro visual BR (DD/MM/AAAA) na hora de editar
+      setDataNascimento(formatForInput(filhoEditando.data_nascimento))
+      setDataEntrada(formatForInput(filhoEditando.data_entrada))
       setIsento(filhoEditando.isento || false)
-      setDiaVencimento(filhoEditando.dia_vencimento || 10) // <--- PUXA O DIA NA EDIÇÃO
+      setDiaVencimento(filhoEditando.dia_vencimento || 10)
       setFotoUrl(filhoEditando.foto_url || '')
     }
   }, [filhoEditando])
@@ -47,14 +63,25 @@ export function CadastroFilho({ filhoEditando, onSucesso, onCancelar }: any) {
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault()
+    
+    // Blindagem de data igual fizemos no caixa!
+    if (dataNascimento.length !== 10 || dataEntrada.length !== 10) {
+      alert("Por favor, preencha as datas completamente no formato DD/MM/AAAA.");
+      return;
+    }
+
     setLoading(true)
     
+    // Traduz do visual BR (DD/MM/AAAA) de volta pro Banco de Dados entender (AAAA-MM-DD)
+    const [dN, mN, yN] = dataNascimento.split('/')
+    const [dE, mE, yE] = dataEntrada.split('/')
+
     const dados = { 
       nome, 
-      data_nascimento: dataNascimento, 
-      data_entrada: dataEntrada,
+      data_nascimento: `${yN}-${mN}-${dN}`, 
+      data_entrada: `${yE}-${mE}-${dE}`,
       isento,
-      dia_vencimento: Number(diaVencimento), // <--- SALVA NO BANCO
+      dia_vencimento: Number(diaVencimento),
       foto_url: fotoUrl, 
       ativo: true 
     }
@@ -97,15 +124,28 @@ export function CadastroFilho({ filhoEditando, onSucesso, onCancelar }: any) {
       <div className="form-row">
         <div className="form-group">
           <label>Data de Nascimento</label>
-          <input type="date" required value={dataNascimento} onChange={e => setDataNascimento(e.target.value)} />
+          <input 
+            type="text" 
+            required 
+            value={dataNascimento} 
+            onChange={e => setDataNascimento(maskData(e.target.value))} 
+            placeholder="DD/MM/AAAA"
+            maxLength={10}
+          />
         </div>
         <div className="form-group">
           <label>Data de Entrada na Casa</label>
-          <input type="date" required value={dataEntrada} onChange={e => setDataEntrada(e.target.value)} />
+          <input 
+            type="text" 
+            required 
+            value={dataEntrada} 
+            onChange={e => setDataEntrada(maskData(e.target.value))} 
+            placeholder="DD/MM/AAAA"
+            maxLength={10}
+          />
         </div>
       </div>
 
-      {/* === LINHA DO VENCIMENTO E ISENÇÃO === */}
       <div className="form-row" style={{ alignItems: 'center', marginTop: '10px' }}>
         <div className="form-group" style={{ flex: 1 }}>
           <label>Dia de Vencimento</label>

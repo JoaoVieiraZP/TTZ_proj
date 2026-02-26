@@ -23,6 +23,12 @@ const maskData = (v: string) => {
   return r;
 };
 
+const maskMesAno = (v: string) => {
+  let r = v.replace(/\D/g, "").slice(0, 6);
+  if (r.length > 2) return `${r.slice(0, 2)}/${r.slice(2)}`;
+  return r;
+};
+
 export function LancamentoFinanceiro({
   mesFiltro,
   isAdmin,
@@ -34,9 +40,9 @@ export function LancamentoFinanceiro({
   const [historico, setHistorico] = useState<any[]>([]);
   const [idEdicao, setIdEdicao] = useState<number | null>(null);
   const [outraCat, setOutraCat] = useState("");
-  const [lancamentoExpandido, setLancamentoExpandido] = useState<number | null>(
-    null,
-  );
+  const [lancamentoExpandido, setLancamentoExpandido] = useState<number | null>(null);
+  
+  const [isencaoMes, setIsencaoMes] = useState(false);
 
   const [formData, setFormData] = useState({
     valor: "",
@@ -45,14 +51,13 @@ export function LancamentoFinanceiro({
     mes_referencia: mesFiltro === "TODOS" ? "" : mesFiltro,
     data_pagamento: "",
     filho_id: "",
-    descricao: "", // <--- CAMPO NOVO AQUI
+    descricao: "",
   });
 
   async function carregar() {
     const { data: f } = await supabase
       .from("filhos")
-      .select("id, nome")
-      .eq("ativo", true)
+      .select("id, nome, ativo")
       .order("nome");
     setFilhos(f || []);
 
@@ -73,14 +78,22 @@ export function LancamentoFinanceiro({
     e.preventDefault();
     if (!isAdmin) return;
 
+    if (formData.mes_referencia.length !== 7) {
+      alert("Por favor, preencha o Mês de Referência no formato completo: MM/AAAA (Ex: 02/2026)");
+      return;
+    }
+
     const [d, m, y] = formData.data_pagamento.split("/");
+    const valorFinal = isencaoMes ? 0 : parseFloat(formData.valor);
+
     const payload = {
       ...formData,
-      valor: parseFloat(formData.valor),
+      valor: valorFinal,
       data_pagamento: `${y}-${m}-${d}`,
-      categoria:
-        formData.categoria === "OUTROS" ? outraCat : formData.categoria,
+      categoria: formData.categoria === "OUTROS" ? outraCat : formData.categoria,
       filho_id: formData.filho_id || null,
+      descricao: isencaoMes && !formData.descricao ? "Isenção concedida neste mês" : formData.descricao,
+      is_isencao: isencaoMes 
     };
 
     if (idEdicao) {
@@ -100,6 +113,7 @@ export function LancamentoFinanceiro({
     });
     setIdEdicao(null);
     setOutraCat("");
+    setIsencaoMes(false);
     carregar();
   }
 
@@ -128,16 +142,15 @@ export function LancamentoFinanceiro({
                 <input
                   type="number"
                   step="0.01"
-                  value={formData.valor}
-                  onChange={(e) =>
-                    setFormData({ ...formData, valor: e.target.value })
-                  }
+                  value={isencaoMes ? "0" : formData.valor}
+                  onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
                   placeholder="Ex: 50,00"
-                  required
+                  required={!isencaoMes}
+                  disabled={isencaoMes}
                 />
               </div>
               <div className="form-group">
-                <label>Data do Pagamento</label>
+                <label>Data do Pagamento / Lançamento</label>
                 <input
                   type="text"
                   placeholder="DD/MM/AAAA"
@@ -158,9 +171,7 @@ export function LancamentoFinanceiro({
                 <label>Tipo de Operação</label>
                 <select
                   value={formData.tipo}
-                  onChange={(e) =>
-                    setFormData({ ...formData, tipo: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, tipo: e.target.value })}
                 >
                   <option value="ENTRADA">Entrada de Dinheiro</option>
                   <option value="SAIDA">Saída de Dinheiro</option>
@@ -173,8 +184,9 @@ export function LancamentoFinanceiro({
                   placeholder="MM/AAAA"
                   value={formData.mes_referencia}
                   onChange={(e) =>
-                    setFormData({ ...formData, mes_referencia: e.target.value })
+                    setFormData({ ...formData, mes_referencia: maskMesAno(e.target.value) })
                   }
+                  maxLength={7}
                   required
                 />
               </div>
@@ -184,9 +196,10 @@ export function LancamentoFinanceiro({
               <label>Categoria do Lançamento</label>
               <select
                 value={formData.categoria}
-                onChange={(e) =>
-                  setFormData({ ...formData, categoria: e.target.value })
-                }
+                onChange={(e) => {
+                  setFormData({ ...formData, categoria: e.target.value });
+                  if (e.target.value !== "MENSALIDADE") setIsencaoMes(false);
+                }}
               >
                 <option value="MENSALIDADE">Mensalidade da Corrente</option>
                 <option value="FESTA">Festa / Evento</option>
@@ -195,6 +208,25 @@ export function LancamentoFinanceiro({
                 <option value="OUTROS">Outros</option>
               </select>
             </div>
+
+            {formData.categoria === "MENSALIDADE" && (
+              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--bg-sub)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <input 
+                  type="checkbox" 
+                  id="isencaoMes" 
+                  checked={isencaoMes} 
+                  onChange={e => {
+                    setIsencaoMes(e.target.checked);
+                    if (e.target.checked) setFormData({...formData, valor: "0"});
+                    else setFormData({...formData, valor: ""});
+                  }} 
+                  style={{ width: '22px', height: '22px', cursor: 'pointer' }}
+                />
+                <label htmlFor="isencaoMes" style={{ margin: 0, cursor: 'pointer', fontWeight: 'bold', color: 'var(--text-dark)' }}>
+                  Isentar membro neste mês
+                </label>
+              </div>
+            )}
 
             {formData.categoria === "OUTROS" && (
               <div className="form-group">
@@ -213,28 +245,25 @@ export function LancamentoFinanceiro({
               <label>Vincular a um Membro (Opcional)</label>
               <select
                 value={formData.filho_id}
-                onChange={(e) =>
-                  setFormData({ ...formData, filho_id: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, filho_id: e.target.value })}
               >
                 <option value="">Lançamento Geral da Casa (Sem Vínculo)</option>
-                {filhos.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.nome}
-                  </option>
+                {filhos
+                  .filter(f => f.ativo !== false || String(f.id) === String(formData.filho_id))
+                  .map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.nome} {f.ativo === false ? '(Inativo)' : ''}
+                    </option>
                 ))}
               </select>
             </div>
 
-            {/* CAMPO DE DESCRIÇÃO AQUI */}
             <div className="form-group">
               <label>Descrição / Observação (Opcional)</label>
               <textarea
                 value={formData.descricao}
-                onChange={(e) =>
-                  setFormData({ ...formData, descricao: e.target.value })
-                }
-                placeholder="Ex: 1kg Vela Branca"
+                onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
+                placeholder={isencaoMes ? "Isenção concedida neste mês" : "Ex: 1kg Vela Branca"}
                 rows={2}
                 style={{
                   width: "100%",
@@ -266,11 +295,13 @@ export function LancamentoFinanceiro({
                   type="button"
                   onClick={() => {
                     setIdEdicao(null);
+                    setIsencaoMes(false);
                     setFormData({
                       ...formData,
                       valor: "",
                       data_pagamento: "",
                       descricao: "",
+                      filho_id: "", // Reseta o ID pra não travar o inativo no form limpo
                     });
                   }}
                   className="btn-primary"
@@ -309,21 +340,9 @@ export function LancamentoFinanceiro({
           {mesFiltro})
         </h3>
 
-        {/* === MÁGICA DO SCROLL AQUI: max-height limitando o tamanho e overflow-y criando a barra === */}
-        <div
-          className="table-responsive"
-          style={{ maxHeight: "530px", overflowY: "auto", paddingRight: "5px" }}
-        >
+        <div className="table-responsive" style={{ maxHeight: "530px", overflowY: "auto", paddingRight: "5px" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            {/* === MÁGICA DO CABEÇALHO FIXO: position sticky e top 0 === */}
-            <thead
-              style={{
-                position: "sticky",
-                top: 0,
-                zIndex: 10,
-                background: "var(--bg-sub)",
-              }}
-            >
+            <thead style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--bg-sub)" }}>
               <tr>
                 <th style={{ width: "60px" }}></th>
                 <th>Mês Ref.</th>
@@ -336,18 +355,13 @@ export function LancamentoFinanceiro({
             <tbody>
               {historico.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={5}
-                    style={{ textAlign: "center", padding: "20px" }}
-                  >
+                  <td colSpan={5} style={{ textAlign: "center", padding: "20px" }}>
                     Nenhum lançamento encontrado.
                   </td>
                 </tr>
               ) : (
                 historico.map((h) => {
-                  const filhoVinculado = filhos.find(
-                    (f) => f.id === h.filho_id,
-                  );
+                  const filhoVinculado = filhos.find((f) => f.id === h.filho_id);
 
                   return (
                     <React.Fragment key={h.id}>
@@ -370,10 +384,7 @@ export function LancamentoFinanceiro({
                         <td
                           data-label="Valor"
                           style={{
-                            color:
-                              h.tipo === "ENTRADA"
-                                ? "var(--success)"
-                                : "var(--danger)",
+                            color: h.tipo === "ENTRADA" ? "var(--success)" : "var(--danger)",
                             fontWeight: 800,
                           }}
                         >
@@ -381,61 +392,26 @@ export function LancamentoFinanceiro({
                           {h.valor.toFixed(2)}
                         </td>
 
-                        <td
-                          data-label="Ação"
-                          className="action-cell"
-                          onClick={(e) => e.stopPropagation()}
-                        >
+                        <td data-label="Ação" className="action-cell" onClick={(e) => e.stopPropagation()}>
                           {isAdmin ? (
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: "15px",
-                                justifyItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
+                            <div style={{ display: "flex", gap: "15px", justifyItems: "center", justifyContent: "center" }}>
                               <button
                                 onClick={() => {
                                   setFormData({
                                     valor: h.valor.toString(),
                                     tipo: h.tipo,
-                                    categoria: [
-                                      "MENSALIDADE",
-                                      "FESTA",
-                                      "BEBIDA_FUMO",
-                                      "VELA",
-                                    ].includes(h.categoria)
-                                      ? h.categoria
-                                      : "OUTROS",
+                                    categoria: ["MENSALIDADE", "FESTA", "BEBIDA_FUMO", "VELA"].includes(h.categoria) ? h.categoria : "OUTROS",
                                     mes_referencia: h.mes_referencia,
-                                    data_pagamento: h.data_pagamento
-                                      .split("-")
-                                      .reverse()
-                                      .join("/"),
+                                    data_pagamento: h.data_pagamento.split("-").reverse().join("/"),
                                     filho_id: h.filho_id || "",
                                     descricao: h.descricao || "",
                                   });
-                                  if (
-                                    ![
-                                      "MENSALIDADE",
-                                      "FESTA",
-                                      "BEBIDA_FUMO",
-                                      "VELA",
-                                    ].includes(h.categoria)
-                                  )
-                                    setOutraCat(h.categoria);
+                                  if (!["MENSALIDADE", "FESTA", "BEBIDA_FUMO", "VELA"].includes(h.categoria)) setOutraCat(h.categoria);
                                   setIdEdicao(h.id);
-                                  window.scrollTo({
-                                    top: 0,
-                                    behavior: "smooth",
-                                  });
+                                  setIsencaoMes(h.is_isencao === true);
+                                  window.scrollTo({ top: 0, behavior: "smooth" });
                                 }}
-                                style={{
-                                  background: "none",
-                                  border: "none",
-                                  cursor: "pointer",
-                                }}
+                                style={{ background: "none", border: "none", cursor: "pointer" }}
                                 title="Editar"
                               >
                                 <Pencil size={20} color="var(--warning)" />
@@ -443,39 +419,19 @@ export function LancamentoFinanceiro({
 
                               <button
                                 onClick={async () => {
-                                  if (
-                                    window.confirm(
-                                      "Tem certeza que deseja excluir este lançamento do caixa?",
-                                    )
-                                  ) {
-                                    await supabase
-                                      .from("financeiro")
-                                      .delete()
-                                      .eq("id", h.id);
+                                  if (window.confirm("Tem certeza que deseja excluir este lançamento do caixa?")) {
+                                    await supabase.from("financeiro").delete().eq("id", h.id);
                                     carregar();
                                   }
                                 }}
-                                style={{
-                                  background: "none",
-                                  border: "none",
-                                  cursor: "pointer",
-                                }}
+                                style={{ background: "none", border: "none", cursor: "pointer" }}
                                 title="Excluir"
                               >
                                 <Trash2 size={20} color="var(--danger)" />
                               </button>
                             </div>
                           ) : (
-                            <div
-                              style={{
-                                textAlign: "center",
-                                color: "var(--text-muted)",
-                                fontSize: "0.8rem",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              --
-                            </div>
+                            <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold" }}>--</div>
                           )}
                         </td>
                       </tr>
@@ -483,150 +439,45 @@ export function LancamentoFinanceiro({
                       {lancamentoExpandido === h.id && (
                         <tr className="expanded-crm-row">
                           <td colSpan={5}>
-                            <div
-                              className="crm-box"
-                              style={{ background: "var(--bg-main)" }}
-                            >
-                              <div
-                                style={{
-                                  display: "flex",
-                                  flexWrap: "wrap",
-                                  gap: "25px",
-                                  padding: "10px",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    gap: "5px",
-                                  }}
-                                >
-                                  <span
-                                    style={{
-                                      color: "var(--text-muted)",
-                                      fontSize: "0.8rem",
-                                      fontWeight: "bold",
-                                      textTransform: "uppercase",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: "5px",
-                                    }}
-                                  >
+                            <div className="crm-box" style={{ background: "var(--bg-main)" }}>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: "25px", padding: "10px" }}>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                                  <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "5px" }}>
                                     <CalendarDays size={16} /> Data:
                                   </span>
-                                  <div
-                                    style={{
-                                      fontWeight: 800,
-                                      color: "var(--text-dark)",
-                                    }}
-                                  >
-                                    {h.data_pagamento
-                                      .split("-")
-                                      .reverse()
-                                      .join("/")}
+                                  <div style={{ fontWeight: 800, color: "var(--text-dark)" }}>
+                                    {h.data_pagamento.split("-").reverse().join("/")}
                                   </div>
                                 </div>
 
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    gap: "5px",
-                                  }}
-                                >
-                                  <span
-                                    style={{
-                                      color: "var(--text-muted)",
-                                      fontSize: "0.8rem",
-                                      fontWeight: "bold",
-                                      textTransform: "uppercase",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: "5px",
-                                    }}
-                                  >
+                                <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                                  <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "5px" }}>
                                     <User size={16} /> Vínculo:
                                   </span>
-                                  <div
-                                    style={{
-                                      fontWeight: 800,
-                                      color: filhoVinculado
-                                        ? "var(--primary)"
-                                        : "var(--text-dark)",
-                                    }}
-                                  >
-                                    {filhoVinculado
-                                      ? filhoVinculado.nome
-                                      : "Lançamento Geral"}
+                                  <div style={{ fontWeight: 800, color: filhoVinculado ? "var(--primary)" : "var(--text-dark)" }}>
+                                    {filhoVinculado ? `${filhoVinculado.nome} ${filhoVinculado.ativo === false ? '(Inativo)' : ''}` : "Lançamento Geral"}
                                   </div>
                                 </div>
 
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    gap: "5px",
-                                  }}
-                                >
-                                  <span
-                                    style={{
-                                      color: "var(--text-muted)",
-                                      fontSize: "0.8rem",
-                                      fontWeight: "bold",
-                                      textTransform: "uppercase",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: "5px",
-                                    }}
-                                  >
+                                <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                                  <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "5px" }}>
                                     <Tag size={16} /> Natureza:
                                   </span>
                                   <div>
                                     {h.tipo === "ENTRADA" ? (
-                                      <span className="badge-status badge-pago">
-                                        ENTRADA
-                                      </span>
+                                      <span className="badge-status badge-pago">ENTRADA</span>
                                     ) : (
-                                      <span className="badge-status badge-pendente">
-                                        SAÍDA
-                                      </span>
+                                      <span className="badge-status badge-pendente">SAÍDA</span>
                                     )}
                                   </div>
                                 </div>
 
                                 {h.descricao && (
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      flexDirection: "column",
-                                      gap: "5px",
-                                      width: "100%",
-                                      marginTop: "10px",
-                                      paddingTop: "10px",
-                                      borderTop: "1px solid var(--border)",
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        color: "var(--text-muted)",
-                                        fontSize: "0.8rem",
-                                        fontWeight: "bold",
-                                        textTransform: "uppercase",
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: "5px",
-                                      }}
-                                    >
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "5px", width: "100%", marginTop: "10px", paddingTop: "10px", borderTop: "1px solid var(--border)" }}>
+                                    <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "5px" }}>
                                       <AlignLeft size={16} /> Observações:
                                     </span>
-                                    <div
-                                      style={{
-                                        color: "var(--text-dark)",
-                                        lineHeight: "1.5",
-                                        fontStyle: "italic",
-                                      }}
-                                    >
+                                    <div style={{ color: "var(--text-dark)", lineHeight: "1.5", fontStyle: "italic" }}>
                                       "{h.descricao}"
                                     </div>
                                   </div>

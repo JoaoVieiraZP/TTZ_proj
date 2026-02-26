@@ -28,7 +28,6 @@ export default function App() {
   ]
   const isAdmin = adminEmails.includes(session?.user?.email)
 
-  // ADICIONAMOS O saldoAcumulado AQUI NO ESTADO
   const [resumo, setResumo] = useState({ totalBruto: 0, gastos: 0, lucro: 0, saldoAcumulado: 0 })
   const [pendentes, setPendentes] = useState<any[]>([])
   const [todosFilhos, setTodosFilhos] = useState<any[]>([])
@@ -63,14 +62,12 @@ export default function App() {
   })
 
   async function carregarDados() {
-    // === NOVA LÓGICA FINANCEIRA: PUXA TUDO PARA SOMAR O ACUMULADO ===
     const { data: finAll } = await supabase.from('financeiro').select('tipo, valor, mes_referencia')
     
     let bMes = 0, sMes = 0, saldoTotal = 0
 
-    // Função auxiliar para comparar meses (ex: "02/2026" vira 202602)
     const getMesValor = (mRef: string) => {
-      if (!mRef || mRef === 'TODOS') return 999999 // Se for 'TODOS', joga lá pro futuro pra somar tudo
+      if (!mRef || mRef === 'TODOS') return 999999 
       const [m, a] = mRef.split('/')
       return parseInt(a) * 100 + parseInt(m)
     }
@@ -80,13 +77,11 @@ export default function App() {
     finAll?.forEach(i => {
       const itemValor = getMesValor(i.mes_referencia)
       
-      // 1. Soma para o Saldo Acumulado (Tudo que for ANTERIOR ou IGUAL ao mês filtrado)
       if (mesReferencia === 'TODOS' || itemValor <= refValorAtual) {
         if (i.tipo === 'ENTRADA') saldoTotal += i.valor
         else saldoTotal -= i.valor
       }
 
-      // 2. Soma para o Resumo isolado do Mês Filtrado
       if (mesReferencia === 'TODOS' || i.mes_referencia === mesReferencia) {
         if (i.tipo === 'ENTRADA') bMes += i.valor
         else sMes += i.valor
@@ -94,7 +89,6 @@ export default function App() {
     })
 
     setResumo({ totalBruto: bMes, gastos: sMes, lucro: bMes - sMes, saldoAcumulado: saldoTotal })
-    // ================================================================
 
     const { data: f } = await supabase.from('filhos').select('*').order('nome', { ascending: true })
     const filhosData = f || []
@@ -102,14 +96,25 @@ export default function App() {
 
     if (mesReferencia !== 'TODOS') {
       const p = await obterInadimplentes(mesReferencia)
+      
+      const [mRefFiltro, aRefFiltro] = mesReferencia.split('/')
+      const filtroNum = parseInt(aRefFiltro) * 100 + parseInt(mRefFiltro)
+
       const pendentesReais = p?.filter(devedor => {
         const filhoDb = filhosData.find(x => x.id === devedor.id)
-        return filhoDb && filhoDb.ativo !== false && !filhoDb.isento
+        if (!filhoDb || filhoDb.ativo === false || filhoDb.isento) return false
+        
+        if (filhoDb.data_entrada) {
+          const [anoE, mesE] = filhoDb.data_entrada.split('T')[0].split('-')
+          const entradaNum = parseInt(anoE) * 100 + parseInt(mesE)
+          if (entradaNum > filtroNum) return false 
+        }
+
+        return true
       }).map(devedor => {
         const filhoDb = filhosData.find(x => x.id === devedor.id)
-        const [mRef, aRef] = mesReferencia.split('/')
         const diaVenc = filhoDb?.dia_vencimento || 10
-        const dataVencimento = new Date(parseInt(aRef), parseInt(mRef) - 1, diaVenc)
+        const dataVencimento = new Date(parseInt(aRefFiltro), parseInt(mRefFiltro) - 1, diaVenc)
         
         const hoje = new Date()
         hoje.setHours(0,0,0,0) 
@@ -146,56 +151,103 @@ export default function App() {
     if (session) carregarDados() 
   }, [telaAtiva, mesReferencia, session])
 
-  async function toggleExpandir(filho: any) {
-    if (filhoExpandido === filho.id) return setFilhoExpandido(null)
-    setFilhoExpandido(filho.id)
+
+  const calcularHistorico = async (filho: any) => {
+    if (!filho) return;
     
-    const { data: pagamentos } = await supabase.from('financeiro').select('*').eq('filho_id', filho.id).eq('categoria', 'MENSALIDADE')
-    const histGerado: any[] = []
-    const dataAtual = new Date()
+    const { data: pagamentos } = await supabase
+      .from('financeiro')
+      .select('*')
+      .eq('filho_id', filho.id)
+      .eq('categoria', 'MENSALIDADE');
+      
+    const histGerado: any[] = [];
+    const dataAtual = new Date();
+
+    const normalizarMes = (mr: string) => {
+      if (!mr || !mr.includes('/')) return mr;
+      const [m, a] = mr.split('/');
+      return `${m.padStart(2, '0')}/${a}`;
+    };
 
     if (filho.data_entrada) {
-      const [anoE, mesE] = filho.data_entrada.split('T')[0].split('-')
-      let dataIter = new Date(parseInt(anoE), parseInt(mesE) - 1, 1)
+      const [anoE, mesE] = filho.data_entrada.split('T')[0].split('-');
+      let dataIter = new Date(parseInt(anoE), parseInt(mesE) - 1, 1);
       
       while (dataIter <= dataAtual || (dataIter.getMonth() === dataAtual.getMonth() && dataIter.getFullYear() === dataAtual.getFullYear())) {
-        const ref = `${String(dataIter.getMonth() + 1).padStart(2, '0')}/${dataIter.getFullYear()}`
-        const pagou = pagamentos?.find(p => p.mes_referencia === ref)
+        const refOriginal = `${String(dataIter.getMonth() + 1).padStart(2, '0')}/${dataIter.getFullYear()}`;
+        const pagou = pagamentos?.find(p => normalizarMes(p.mes_referencia) === normalizarMes(refOriginal));
         
-        let statusMensalidade = 'PENDENTE'
+        let statusMensalidade = 'PENDENTE';
         
         if (pagou) {
-          statusMensalidade = 'PAGO'
+          // LENDO A COLUNA OFICIAL DO BANCO:
+          if (pagou.is_isencao === true) {
+            statusMensalidade = 'ISENTO';
+          } else {
+            statusMensalidade = 'PAGO';
+          }
         } else if (filho.isento) {
-          statusMensalidade = 'ISENTO'
+          statusMensalidade = 'ISENTO';
         } else {
-          const [mRef, aRef] = ref.split('/')
-          const diaVenc = filho.dia_vencimento || 10
-          const dataVencimento = new Date(parseInt(aRef), parseInt(mRef) - 1, diaVenc)
-          const hoje = new Date()
-          hoje.setHours(0,0,0,0)
+          const [mRef, aRef] = refOriginal.split('/');
+          const diaVenc = filho.dia_vencimento || 10;
+          const dataVencimento = new Date(parseInt(aRef), parseInt(mRef) - 1, diaVenc);
+          const hoje = new Date();
+          hoje.setHours(0,0,0,0);
 
           if (hoje > dataVencimento) {
-            statusMensalidade = 'VENCIDA'
+            statusMensalidade = 'VENCIDA';
           }
         }
 
-        histGerado.push({ ref, status: statusMensalidade, dt: pagou ? pagou.data_pagamento : null })
-        dataIter.setMonth(dataIter.getMonth() + 1)
+        histGerado.push({ ref: refOriginal, status: statusMensalidade, dt: pagou ? pagou.data_pagamento : null });
+        dataIter.setMonth(dataIter.getMonth() + 1);
       }
     }
     
     pagamentos?.forEach(p => {
-      if (!histGerado.find(h => h.ref === p.mes_referencia)) {
-        histGerado.push({ ref: p.mes_referencia, status: 'ADIANTADO', dt: p.data_pagamento })
+      const mesRefBD = normalizarMes(p.mes_referencia);
+      if (!histGerado.find(h => normalizarMes(h.ref) === mesRefBD)) {
+        const [mBD, aBD] = mesRefBD.split('/');
+        const dataPagamentoRef = new Date(parseInt(aBD), parseInt(mBD) - 1, 1);
+        const dataAtualVerificacao = new Date();
+        
+        let statusFinal = 'INCONSISTENTE'; 
+        
+        if (dataPagamentoRef.getFullYear() > dataAtualVerificacao.getFullYear() || 
+           (dataPagamentoRef.getFullYear() === dataAtualVerificacao.getFullYear() && dataPagamentoRef.getMonth() > dataAtualVerificacao.getMonth())) {
+          statusFinal = 'ADIANTADO';
+        }
+
+        histGerado.push({ ref: mesRefBD, status: statusFinal, dt: p.data_pagamento });
       }
-    })
+    });
 
     setHistoricoMensalidades(histGerado.sort((a,b) => {
-      const [mA, aA] = a.ref.split('/'), [mB, aB] = b.ref.split('/')
-      return parseInt(`${aB}${mB}`) - parseInt(`${aA}${mA}`)
-    }))
-  }
+      const [mA, aA] = a.ref.split('/');
+      const [mB, aB] = b.ref.split('/');
+      return parseInt(`${aB}${mB}`) - parseInt(`${aA}${mA}`);
+    }));
+  };
+
+  const toggleExpandir = (filho: any) => {
+    if (filhoExpandido === filho.id) {
+      setFilhoExpandido(null);
+      return;
+    }
+    setFilhoExpandido(filho.id);
+    calcularHistorico(filho).catch(console.error);
+  };
+
+  useEffect(() => {
+    if (filhoExpandido) {
+      const filhoAtualizado = todosFilhos.find(f => f.id === filhoExpandido);
+      if (filhoAtualizado) {
+        calcularHistorico(filhoAtualizado).catch(console.error);
+      }
+    }
+  }, [todosFilhos, filhoExpandido]);
 
   const filhosExibidos = todosFilhos.filter(f => {
     const statusCerto = abaInativos ? f.ativo === false : f.ativo !== false
@@ -268,7 +320,6 @@ export default function App() {
         {telaAtiva === 'dashboard' && (
           <div style={{width: '100%'}}>
             
-            {/* ====== AQUI ESTÃO OS CARDS DE ESTATÍSTICAS ====== */}
             <section className="stats-grid">
               <div className="stat-card blue">
                 <h3>Total Entradas ({mesReferencia})</h3>
@@ -281,10 +332,8 @@ export default function App() {
               
               <div className="stat-card green">
                 <h3>Saldo em Conta (Total)</h3>
-                {/* Mostra o Saldo Acumulado de todos os tempos até o mês selecionado */}
                 <div className="stat-value">R$ {resumo.saldoAcumulado.toFixed(2)}</div>
                 
-                {/* Mostra o "Saldo do Mês" em letras menores (só se não for "TODOS") */}
                 {mesReferencia !== 'TODOS' && (
                   <div style={{ fontSize: '0.85rem', marginTop: '8px', opacity: 0.9, fontWeight: 500 }}>
                     Saldo do mês: R$ {resumo.lucro.toFixed(2)}
@@ -292,7 +341,6 @@ export default function App() {
                 )}
               </div>
             </section>
-            {/* ================================================== */}
             
             <div className="dashboard-grid">
               <div className="table-container">
@@ -503,6 +551,7 @@ export default function App() {
                                                     {h.status === 'VENCIDA' && <span className="badge-status" style={{ background: 'rgba(239, 68, 68, 0.15)', color: 'var(--danger)', border: '1px solid var(--danger)' }}><AlertTriangle size={14}/> VENCIDA</span>}
                                                     {h.status === 'ADIANTADO' && <span className="badge-status badge-adiantado"><FastForward size={14}/> ADIANTADO</span>}
                                                     {h.status === 'ISENTO' && <span className="badge-status badge-isento">ISENTO</span>}
+                                                    {h.status === 'INCONSISTENTE' && <span className="badge-status" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', border: '1px solid #8b5cf6' }}><AlertCircle size={14}/> INCONSISTENTE</span>}
                                                   </td>
                                                   <td data-label="Data Pgto">{formatarData(h.dt)}</td>
                                                 </tr>
