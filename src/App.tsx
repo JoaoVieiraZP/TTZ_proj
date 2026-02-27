@@ -6,11 +6,12 @@ import { LancamentoFinanceiro } from './components/LancamentoFinanceiro'
 import { GestaoFestas } from './components/GestaoFestas'
 import { Login } from './components/Login'
 import { PerfilUsuario } from './components/PerfilUsuario'
+import { Relatorios } from './components/Relatorios'
 import { 
   LayoutDashboard, Users, Wallet, AlertCircle, List, Clock, 
   CalendarDays, Pencil, UserPlus, ChevronDown, 
   ChevronUp, Camera, CheckCircle2, FastForward,
-  Moon, Sun, LogOut, Search, UserMinus, UserCheck, User, AlertTriangle, PartyPopper
+  Moon, Sun, LogOut, Search, UserMinus, UserCheck, User, AlertTriangle, PartyPopper, FileText
 } from 'lucide-react'
 import './App.css'
 
@@ -34,7 +35,7 @@ export default function App() {
   
   const [pendentes, setPendentes] = useState<any[]>([])
   const [todosFilhos, setTodosFilhos] = useState<any[]>([])
-  const [telaAtiva, setTelaAtiva] = useState<'dashboard' | 'filhos' | 'financeiro' | 'perfil' | 'festas'>('dashboard')
+  const [telaAtiva, setTelaAtiva] = useState<'dashboard' | 'filhos' | 'financeiro' | 'perfil' | 'festas' | 'relatorios'>('dashboard')
   const [mesesDisponiveis, setMesesDisponiveis] = useState<any[]>([])
   
   const [mostrarFormFilho, setMostrarFormFilho] = useState(false)
@@ -273,6 +274,9 @@ export default function App() {
           </button>
           <button className={`nav-item ${telaAtiva === 'festas' ? 'active' : ''}`} onClick={() => setTelaAtiva('festas')}>
             <PartyPopper size={24}/> Festas
+          </button>
+          <button className={`nav-item ${telaAtiva === 'relatorios' ? 'active' : ''}`} onClick={() => setTelaAtiva('relatorios')}>
+            <FileText size={24}/> Relatórios
           </button>
         </nav>
       </aside>
@@ -583,6 +587,7 @@ export default function App() {
         {telaAtiva === 'financeiro' && <LancamentoFinanceiro mesFiltro={mesReferencia} isAdmin={isAdmin}/>}
         {telaAtiva === 'festas' && <GestaoFestas isAdmin={isAdmin}/>}
         {telaAtiva === 'perfil' && <PerfilUsuario session={session} />}
+        {telaAtiva === 'relatorios' && <Relatorios />}
       </main>
     </div>
   )

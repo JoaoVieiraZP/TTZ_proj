@@ -275,21 +275,23 @@ export function GestaoFestas({ isAdmin }: { isAdmin: boolean }) {
                                       
                                       {pendentes.map(p => (
                                         <div key={`pend-${p.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '8px', borderBottom: '1px solid var(--border)' }}>
-                                          <div style={{ color: 'var(--text-dark)', fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: '10px' }} title={p.nome}>
+                                          {/* flex: 1 força o nome a ocupar o espaço, mas respeitando o limite */}
+                                          <div style={{ color: 'var(--text-dark)', fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: '10px', flex: 1 }} title={p.nome}>
                                             {p.nome}
                                           </div>
-                                          <div style={{ color: 'var(--warning)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.85rem', flexShrink: 0 }}>
+                                          {/* width fixa e flexShrink: 0 impedem que o crachá seja esmagado */}
+                                          <div style={{ color: 'var(--warning)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.85rem', flexShrink: 0, width: '85px', justifyContent: 'flex-end' }}>
                                             <Clock size={16}/> Pendente
                                           </div>
                                         </div>
                                       ))}
-                                      
+
                                       {pagantes.map(p => (
                                         <div key={`pag-${p.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '8px', borderBottom: '1px solid var(--border)', opacity: 0.7 }}>
-                                          <div style={{ color: 'var(--text-dark)', fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: '10px' }} title={p.nome}>
+                                          <div style={{ color: 'var(--text-dark)', fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: '10px', flex: 1 }} title={p.nome}>
                                             {p.nome}
                                           </div>
-                                          <div style={{ color: 'var(--success)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.85rem', flexShrink: 0 }}>
+                                          <div style={{ color: 'var(--success)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.85rem', flexShrink: 0, width: '85px', justifyContent: 'flex-end' }}>
                                             <CheckCircle2 size={16}/> Pagou
                                           </div>
                                         </div>
