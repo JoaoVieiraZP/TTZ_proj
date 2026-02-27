@@ -14,7 +14,8 @@ import {
   CalendarDays,
   Tag,
   AlignLeft,
-  PartyPopper
+  PartyPopper,
+  Filter // <-- NOVO: Ícone de Filtro
 } from "lucide-react";
 
 const maskData = (v: string) => {
@@ -39,12 +40,15 @@ export function LancamentoFinanceiro({
 }) {
   const [filhos, setFilhos] = useState<any[]>([]);
   const [historico, setHistorico] = useState<any[]>([]);
-  const [todasFestas, setTodasFestas] = useState<any[]>([]); // <-- NOVO: Guarda as festas
+  const [todasFestas, setTodasFestas] = useState<any[]>([]);
   
   const [idEdicao, setIdEdicao] = useState<number | null>(null);
   const [outraCat, setOutraCat] = useState("");
   const [lancamentoExpandido, setLancamentoExpandido] = useState<number | null>(null);
   const [isencaoMes, setIsencaoMes] = useState(false);
+
+  // <-- NOVO: Estado para o filtro de Entradas/Saídas
+  const [tipoFiltro, setTipoFiltro] = useState<"TODOS" | "ENTRADA" | "SAIDA">("TODOS");
 
   const [formData, setFormData] = useState({
     valor: "",
@@ -53,7 +57,7 @@ export function LancamentoFinanceiro({
     mes_referencia: mesFiltro === "TODOS" ? "" : mesFiltro,
     data_pagamento: "",
     filho_id: "",
-    festa_id: "", // <-- NOVO: Ponte com a festa
+    festa_id: "",
     descricao: "",
   });
 
@@ -61,7 +65,6 @@ export function LancamentoFinanceiro({
     const { data: f } = await supabase.from("filhos").select("id, nome, ativo").order("nome");
     setFilhos(f || []);
 
-    // Busca as festas para popular o campo
     const { data: festas } = await supabase.from("festas").select("id, nome, ativa").order("data_evento", { ascending: false });
     setTodasFestas(festas || []);
 
@@ -98,7 +101,7 @@ export function LancamentoFinanceiro({
       data_pagamento: `${y}-${m}-${d}`,
       categoria: formData.categoria === "OUTROS" ? outraCat : formData.categoria,
       filho_id: formData.filho_id || null,
-      festa_id: formData.categoria === "FESTA" ? formData.festa_id : null, // Só manda ID da festa se a categoria for FESTA
+      festa_id: formData.categoria === "FESTA" ? formData.festa_id : null,
       descricao: isencaoMes && !formData.descricao ? "Isenção concedida neste mês" : formData.descricao,
       is_isencao: isencaoMes 
     };
@@ -129,6 +132,12 @@ export function LancamentoFinanceiro({
     if (lancamentoExpandido === id) return setLancamentoExpandido(null);
     setLancamentoExpandido(id);
   }
+
+  // <-- NOVO: Aplica o filtro antes de renderizar a lista
+  const historicoFiltrado = historico.filter((h) => {
+    if (tipoFiltro === "TODOS") return true;
+    return h.tipo === tipoFiltro;
+  });
 
   return (
     <div className="dashboard-grid">
@@ -217,7 +226,6 @@ export function LancamentoFinanceiro({
               </select>
             </div>
 
-            {/* === NOVO: CAIXA ESPECÍFICA PARA VINCULAR A FESTA === */}
             {formData.categoria === "FESTA" && (
               <div className="form-group" style={{ background: 'rgba(139, 92, 246, 0.05)', padding: '15px', borderRadius: '8px', border: '1px solid #8b5cf6', marginTop: '10px' }}>
                 <label style={{ color: '#8b5cf6', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -230,7 +238,6 @@ export function LancamentoFinanceiro({
                   required
                 >
                   <option value="">Selecione uma festa...</option>
-                  {/* Regra de Ouro: Mostrar as ativas, OU a que já está salva na edição */}
                   {todasFestas
                     .filter(f => f.ativa || String(f.id) === String(formData.festa_id))
                     .map((f) => (
@@ -241,7 +248,6 @@ export function LancamentoFinanceiro({
                 </select>
               </div>
             )}
-            {/* ======================================================= */}
 
             {formData.categoria === "MENSALIDADE" && (
               <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--bg-sub)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
@@ -370,10 +376,25 @@ export function LancamentoFinanceiro({
       </div>
 
       <div className="table-container">
-        <h3>
-          <History size={22} color="var(--secondary)" /> Últimas Movimentações (
-          {mesFiltro})
-        </h3>
+        {/* === NOVO: Cabeçalho com o Filtro lado a lado === */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', marginBottom: '15px' }}>
+          <h3 style={{ margin: 0 }}>
+            <History size={22} color="var(--secondary)" /> Últimas Movimentações ({mesFiltro})
+          </h3>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Filter size={18} color="var(--text-muted)" />
+            <select 
+              value={tipoFiltro} 
+              onChange={(e) => setTipoFiltro(e.target.value as any)}
+              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-sub)', color: 'var(--text-dark)', fontWeight: 'bold' }}
+            >
+              <option value="TODOS">Todas Movimentações</option>
+              <option value="ENTRADA">🟢 Entradas</option>
+              <option value="SAIDA">🔴 Saídas</option>
+            </select>
+          </div>
+        </div>
 
         <div className="table-responsive" style={{ maxHeight: "530px", overflowY: "auto", paddingRight: "5px" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -388,16 +409,16 @@ export function LancamentoFinanceiro({
             </thead>
 
             <tbody>
-              {historico.length === 0 ? (
+              {historicoFiltrado.length === 0 ? (
                 <tr>
                   <td colSpan={5} style={{ textAlign: "center", padding: "20px" }}>
-                    Nenhum lançamento encontrado.
+                    Nenhum lançamento encontrado para este filtro.
                   </td>
                 </tr>
               ) : (
-                historico.map((h) => {
+                historicoFiltrado.map((h) => {
                   const filhoVinculado = filhos.find((f) => f.id === h.filho_id);
-                  const festaVinculada = todasFestas.find((f) => f.id === h.festa_id); // Puxa a festa!
+                  const festaVinculada = todasFestas.find((f) => f.id === h.festa_id);
 
                   return (
                     <React.Fragment key={h.id}>
@@ -416,10 +437,21 @@ export function LancamentoFinanceiro({
                         <td data-label="Mês Ref.">
                           <strong>{h.mes_referencia}</strong>
                         </td>
+                        
                         <td data-label="Categoria">
-                          {h.categoria} 
-                          {festaVinculada && <span style={{display: 'block', fontSize: '0.75rem', color: '#8b5cf6', fontWeight: 'bold'}}>{festaVinculada.nome}</span>}
+                          <div style={{ fontWeight: 'bold' }}>{h.categoria}</div>
+                          {festaVinculada && (
+                            <span style={{display: 'block', fontSize: '0.75rem', color: '#8b5cf6', fontWeight: 'bold', marginTop: '2px'}}>
+                              Festa: {festaVinculada.nome}
+                            </span>
+                          )}
+                          {h.descricao && (
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '4px', lineHeight: '1.2' }}>
+                              "{h.descricao}"
+                            </div>
+                          )}
                         </td>
+
                         <td
                           data-label="Valor"
                           style={{
@@ -443,7 +475,7 @@ export function LancamentoFinanceiro({
                                     mes_referencia: h.mes_referencia,
                                     data_pagamento: h.data_pagamento.split("-").reverse().join("/"),
                                     filho_id: h.filho_id || "",
-                                    festa_id: h.festa_id || "", // Carrega a festa na edição!
+                                    festa_id: h.festa_id || "",
                                     descricao: h.descricao || "",
                                   });
                                   if (!["MENSALIDADE", "FESTA", "BEBIDA_FUMO", "VELA"].includes(h.categoria)) setOutraCat(h.categoria);
