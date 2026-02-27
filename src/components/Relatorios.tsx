@@ -54,11 +54,19 @@ export function Relatorios() {
     if (!mesSelecionado) return;
     setCarregando(true);
 
-    const { data: fin } = await supabase.from("financeiro").select("*").eq("mes_referencia", mesSelecionado);
+    // 1. Busca os dados apenas do mês selecionado
+    const { data: finMes } = await supabase.from("financeiro").select("*").eq("mes_referencia", mesSelecionado);
+    
+    // 2. Busca TODAS as movimentações para calcular o Saldo Total da Conta (igual ao Dashboard)
+    const { data: finGeral } = await supabase.from("financeiro").select("valor, tipo");
+    const saldoTotalConta = (finGeral || []).reduce((acc, m) => {
+      return m.tipo === "ENTRADA" ? acc + m.valor : acc - m.valor;
+    }, 0);
+
     const { data: filhos } = await supabase.from("filhos").select("*").order("nome");
     const { data: festas } = await supabase.from("festas").select("id, nome");
 
-    const movimentacoes = fin || [];
+    const movimentacoes = finMes || [];
     const listaFilhos = filhos || [];
     const listaFestas = festas || [];
 
@@ -151,7 +159,8 @@ export function Relatorios() {
         entradasExtras: entradasExtras,
         totalEntradas: totalEntradasGerais,
         totalSaidas: totalSaidasGerais,
-        saldo: totalEntradasGerais - totalSaidasGerais
+        saldo: totalEntradasGerais - totalSaidasGerais,
+        saldoConta: saldoTotalConta // <-- NOVO DADO
       },
       corrente: {
         lista: membrosCorrente,
@@ -172,7 +181,8 @@ export function Relatorios() {
     let texto = `📊 *BALANCETE - ${relatorio.mes}*\n\n`;
     texto += `🟢 Arrecadado: R$ ${formatarMoeda(relatorio.geral.totalEntradas)}\n`;
     texto += `🔴 Gasto: R$ ${formatarMoeda(relatorio.geral.totalSaidas)}\n`;
-    texto += `💰 Saldo: R$ ${formatarMoeda(relatorio.geral.saldo)}\n\n`;
+    texto += `💰 Saldo do Mês: R$ ${formatarMoeda(relatorio.geral.saldo)}\n`;
+    texto += `🏦 *SALDO TOTAL CONTA: R$ ${formatarMoeda(relatorio.geral.saldoConta)}*\n\n`; // <-- NOVA LINHA
     texto += `*RADAR DA CORRENTE (${total} Médiuns)*\n`;
     texto += `✅ Pagaram: ${r.pagantes}\n`;
     texto += `⚠️ Pendentes: ${r.pendentes}\n`;
@@ -203,12 +213,11 @@ export function Relatorios() {
 
       // INSERIR LOGO
       if (LOGO_BASE64.length > 50) {
-        // Posição: 265mm da esquerda, 5mm do topo. Tamanho 20x20mm. (Termina no milímetro 25)
         doc.addImage(LOGO_BASE64, 'PNG', 265, 5, 20, 20);
       }
 
       // =========================================================
-      // TABELAS COMEÇAM APENAS NO MILÍMETRO 28 (Longe da Logo)
+      // TABELAS COMEÇAM NO MILÍMETRO 28
       // =========================================================
 
       // --- TABELA ESQUERDA (CORRENTE) ---
@@ -248,15 +257,17 @@ export function Relatorios() {
         }
       });
 
-      // VOLTA A CANETA PARA O TOPO (Abaixo do Cabeçalho/Logo)
+      // VOLTA A CANETA PARA O TOPO
       doc.setPage(1);
       let alturaLadoDireito = 28;
 
       // --- TABELA DIREITA (RESUMO DE CAIXA) ---
+      // NOVO: Adicionado Saldo Total na Conta
       const resumoBody = [
         ['Total Arrecadado', formatarMoeda(relatorio.geral.totalEntradas)],
         ['Total Gasto', `- ${formatarMoeda(relatorio.geral.totalSaidas)}`],
-        ['Saldo Líquido', formatarMoeda(relatorio.geral.saldo)]
+        ['Saldo Líquido do Mês', formatarMoeda(relatorio.geral.saldo)],
+        ['SALDO TOTAL EM CONTA', formatarMoeda(relatorio.geral.saldoConta)] // <-- NOVA LINHA
       ];
       autoTable(doc, {
         startY: alturaLadoDireito,
@@ -266,9 +277,16 @@ export function Relatorios() {
         styles: { fontSize: 8, cellPadding: 1.5, textColor: 0, fontStyle: 'bold' },
         columnStyles: { 0: { cellWidth: 50 }, 1: { halign: 'right' } },
         willDrawCell: function(data) {
+          // Linha 2 (Saldo do Mês) -> Fica cinza claro para diferenciar
           if (data.row.index === 2) {
-            data.cell.styles.fillColor = [226, 239, 218]; 
+            data.cell.styles.fillColor = [242, 242, 242]; 
             if (relatorio.geral.saldo < 0) data.cell.styles.textColor = [192, 0, 0];
+          }
+          // Linha 3 (Saldo Total) -> Fica Verde ou Vermelho com destaque
+          if (data.row.index === 3) {
+            data.cell.styles.fillColor = [226, 239, 218]; // Fundo verdinho
+            if (relatorio.geral.saldoConta < 0) data.cell.styles.textColor = [192, 0, 0];
+            else data.cell.styles.textColor = [0, 100, 0]; // Letra verde escura
           }
           if (data.row.index === 1 && data.column.index === 1) data.cell.styles.textColor = [192, 0, 0];
         }
