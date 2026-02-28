@@ -30,7 +30,6 @@ export default function App() {
   ]
   const isAdmin = adminEmails.includes(session?.user?.email)
 
-  // VOLTAMOS PARA A MATEMÁTICA SIMPLES E LIMPA!
   const [resumo, setResumo] = useState({ totalBruto: 0, gastos: 0, lucro: 0, saldoAcumulado: 0 })
   
   const [pendentes, setPendentes] = useState<any[]>([])
@@ -70,22 +69,12 @@ export default function App() {
     
     let bMes = 0, sMes = 0, saldoTotal = 0
 
-    const getMesValor = (mRef: string) => {
-      if (!mRef || mRef === 'TODOS') return 999999 
-      const [m, a] = mRef.split('/')
-      return parseInt(a) * 100 + parseInt(m)
-    }
-
-    const refValorAtual = getMesValor(mesReferencia)
-
     finAll?.forEach(i => {
-      const itemValor = getMesValor(i.mes_referencia)
-      
-      if (mesReferencia === 'TODOS' || itemValor <= refValorAtual) {
-        if (i.tipo === 'ENTRADA') saldoTotal += i.valor
-        else saldoTotal -= i.valor
-      }
+      // 1. SALDO TOTAL ABSOLUTO: Soma tudo independente do mês selecionado
+      if (i.tipo === 'ENTRADA') saldoTotal += i.valor
+      else saldoTotal -= i.valor
 
+      // 2. SALDO DO MÊS: Respeita o filtro selecionado na tela
       if (mesReferencia === 'TODOS' || i.mes_referencia === mesReferencia) {
         if (i.tipo === 'ENTRADA') bMes += i.valor
         else sMes += i.valor
@@ -324,7 +313,6 @@ export default function App() {
         {telaAtiva === 'dashboard' && (
           <div style={{width: '100%'}}>
             
-            {/* O LAYOUT CLÁSSICO E LIMPO DE VOLTA! */}
             <section className="stats-grid">
               <div className="stat-card blue">
                 <h3>Total Entradas ({mesReferencia})</h3>
@@ -341,7 +329,7 @@ export default function App() {
                 
                 {mesReferencia !== 'TODOS' && (
                   <div style={{ fontSize: '0.85rem', marginTop: '8px', opacity: 0.9, fontWeight: 500 }}>
-                    Saldo do mês: R$ {resumo.lucro.toFixed(2)}
+                    Saldo do mês filtrado: R$ {resumo.lucro.toFixed(2)}
                   </div>
                 )}
               </div>

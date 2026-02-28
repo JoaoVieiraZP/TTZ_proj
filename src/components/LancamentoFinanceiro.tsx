@@ -15,7 +15,7 @@ import {
   Tag,
   AlignLeft,
   PartyPopper,
-  Filter // <-- NOVO: Ícone de Filtro
+  Filter
 } from "lucide-react";
 
 const maskData = (v: string) => {
@@ -47,7 +47,6 @@ export function LancamentoFinanceiro({
   const [lancamentoExpandido, setLancamentoExpandido] = useState<number | null>(null);
   const [isencaoMes, setIsencaoMes] = useState(false);
 
-  // <-- NOVO: Estado para o filtro de Entradas/Saídas
   const [tipoFiltro, setTipoFiltro] = useState<"TODOS" | "ENTRADA" | "SAIDA">("TODOS");
 
   const [formData, setFormData] = useState({
@@ -133,7 +132,6 @@ export function LancamentoFinanceiro({
     setLancamentoExpandido(id);
   }
 
-  // <-- NOVO: Aplica o filtro antes de renderizar a lista
   const historicoFiltrado = historico.filter((h) => {
     if (tipoFiltro === "TODOS") return true;
     return h.tipo === tipoFiltro;
@@ -339,6 +337,9 @@ export function LancamentoFinanceiro({
                     setFormData({
                       ...formData,
                       valor: "",
+                      tipo: "ENTRADA",
+                      categoria: "MENSALIDADE",
+                      mes_referencia: mesFiltro === "TODOS" ? "" : mesFiltro,
                       data_pagamento: "",
                       descricao: "",
                       filho_id: "",
@@ -376,7 +377,6 @@ export function LancamentoFinanceiro({
       </div>
 
       <div className="table-container">
-        {/* === NOVO: Cabeçalho com o Filtro lado a lado === */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', marginBottom: '15px' }}>
           <h3 style={{ margin: 0 }}>
             <History size={22} color="var(--secondary)" /> Últimas Movimentações ({mesFiltro})
@@ -390,21 +390,23 @@ export function LancamentoFinanceiro({
               style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-sub)', color: 'var(--text-dark)', fontWeight: 'bold' }}
             >
               <option value="TODOS">Todas Movimentações</option>
-              <option value="ENTRADA">🟢 Entradas</option>
-              <option value="SAIDA">🔴 Saídas</option>
+              <option value="ENTRADA">🟢 Só Entradas</option>
+              <option value="SAIDA">🔴 Só Saídas</option>
             </select>
           </div>
         </div>
 
         <div className="table-responsive" style={{ maxHeight: "530px", overflowY: "auto", paddingRight: "5px" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          {/* === CORREÇÃO DE LAYOUT AQUI: tableLayout: "fixed" força o respeito aos tamanhos === */}
+          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
             <thead style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--bg-sub)" }}>
               <tr>
-                <th style={{ width: "60px" }}></th>
-                <th>Mês Ref.</th>
-                <th>Categoria</th>
-                <th>Valor</th>
-                <th style={{ textAlign: "center" }}>Ação</th>
+                <th style={{ width: "40px" }}></th>
+                <th style={{ width: "80px" }}>Mês Ref.</th>
+                <th style={{ width: "auto" }}>Categoria</th>
+                {/* O Valor e Ação ganham um tamanho cravado pra nunca serem espremidos */}
+                <th style={{ width: "110px", textAlign: "right", paddingRight: "15px" }}>Valor</th>
+                <th style={{ width: "90px", textAlign: "center" }}>Ação</th>
               </tr>
             </thead>
 
@@ -438,34 +440,51 @@ export function LancamentoFinanceiro({
                           <strong>{h.mes_referencia}</strong>
                         </td>
                         
-                        <td data-label="Categoria">
-                          <div style={{ fontWeight: 'bold' }}>{h.categoria}</div>
+                        {/* A Coluna categoria agora quebra o texto certinho e a descrição ganha reticências se for longa */}
+                        <td data-label="Categoria" style={{ overflow: "hidden" }}>
+                          <div style={{ fontWeight: 'bold', fontSize: '0.85rem', wordBreak: 'break-word', lineHeight: '1.2' }}>{h.categoria}</div>
                           {festaVinculada && (
-                            <span style={{display: 'block', fontSize: '0.75rem', color: '#8b5cf6', fontWeight: 'bold', marginTop: '2px'}}>
+                            <span style={{display: 'block', fontSize: '0.75rem', color: '#8b5cf6', fontWeight: 'bold', marginTop: '2px', wordBreak: 'break-word'}}>
                               Festa: {festaVinculada.nome}
                             </span>
                           )}
                           {h.descricao && (
-                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '4px', lineHeight: '1.2' }}>
+                            <div style={{ 
+                              fontSize: '0.75rem', 
+                              color: 'var(--text-muted)', 
+                              fontStyle: 'italic', 
+                              marginTop: '4px', 
+                              lineHeight: '1.3',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2, /* Limita a descrição a 2 linhas e bota pontinhos */
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              wordBreak: 'break-word'
+                            }}>
                               "{h.descricao}"
                             </div>
                           )}
                         </td>
 
+                        {/* O Valor não quebra linha nunca mais (whiteSpace: nowrap) */}
                         <td
                           data-label="Valor"
                           style={{
                             color: h.tipo === "ENTRADA" ? "var(--success)" : "var(--danger)",
                             fontWeight: 800,
+                            textAlign: "right",
+                            paddingRight: "15px",
+                            whiteSpace: "nowrap"
                           }}
                         >
                           {h.tipo === "ENTRADA" ? "+ " : "- "}R${" "}
                           {h.valor.toFixed(2)}
                         </td>
 
-                        <td data-label="Ação" className="action-cell" onClick={(e) => e.stopPropagation()}>
+                        <td data-label="Ação" className="action-cell" onClick={(e) => e.stopPropagation()} style={{ textAlign: "center", whiteSpace: "nowrap" }}>
                           {isAdmin ? (
-                            <div style={{ display: "flex", gap: "15px", justifyItems: "center", justifyContent: "center" }}>
+                            <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
                               <button
                                 onClick={() => {
                                   setFormData({
@@ -486,7 +505,7 @@ export function LancamentoFinanceiro({
                                 style={{ background: "none", border: "none", cursor: "pointer" }}
                                 title="Editar"
                               >
-                                <Pencil size={20} color="var(--warning)" />
+                                <Pencil size={18} color="var(--warning)" />
                               </button>
 
                               <button
@@ -499,7 +518,7 @@ export function LancamentoFinanceiro({
                                 style={{ background: "none", border: "none", cursor: "pointer" }}
                                 title="Excluir"
                               >
-                                <Trash2 size={20} color="var(--danger)" />
+                                <Trash2 size={18} color="var(--danger)" />
                               </button>
                             </div>
                           ) : (
@@ -558,7 +577,7 @@ export function LancamentoFinanceiro({
                                 {h.descricao && (
                                   <div style={{ display: "flex", flexDirection: "column", gap: "5px", width: "100%", marginTop: "10px", paddingTop: "10px", borderTop: "1px solid var(--border)" }}>
                                     <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "5px" }}>
-                                      <AlignLeft size={16} /> Observações:
+                                      <AlignLeft size={16} /> Observações Completas:
                                     </span>
                                     <div style={{ color: "var(--text-dark)", lineHeight: "1.5", fontStyle: "italic" }}>
                                       "{h.descricao}"
