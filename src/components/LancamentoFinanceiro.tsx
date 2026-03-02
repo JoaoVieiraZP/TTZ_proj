@@ -49,6 +49,17 @@ export function LancamentoFinanceiro({
 
   const [tipoFiltro, setTipoFiltro] = useState<"TODOS" | "ENTRADA" | "SAIDA">("TODOS");
 
+  // === LÓGICA DE RESPONSIVIDADE (MOBILE VS PC) ===
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [mostrarFormMobile, setMostrarFormMobile] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+  // ==============================================
+
   const [formData, setFormData] = useState({
     valor: "",
     tipo: "ENTRADA",
@@ -124,6 +135,10 @@ export function LancamentoFinanceiro({
     setIdEdicao(null);
     setOutraCat("");
     setIsencaoMes(false);
+    
+    // Se estiver no celular, fecha o formulário sozinho após salvar pra mostrar a tabela atualizada
+    if (isMobile) setMostrarFormMobile(false);
+    
     carregar();
   }
 
@@ -139,242 +154,270 @@ export function LancamentoFinanceiro({
 
   return (
     <div className="dashboard-grid">
-      <div className="table-container">
-        <h3>
-          {idEdicao ? (
-            <Pencil size={22} color="var(--warning)" />
+      
+      {/* === BOTÃO DE TOGGLE SÓ APARECE NO CELULAR === */}
+      {isMobile && isAdmin && (
+        <button
+          className="btn-primary"
+          onClick={() => {
+            setMostrarFormMobile(!mostrarFormMobile);
+            if (mostrarFormMobile && idEdicao) {
+              // Cancela a edição se esconder o form
+              setIdEdicao(null);
+              setFormData({...formData, valor: "", data_pagamento: "", descricao: "", filho_id: "", festa_id: ""});
+              setIsencaoMes(false);
+            }
+          }}
+          style={{ width: "100%", padding: "15px", fontSize: "1rem", display: "flex", justifyContent: "center", alignItems: "center", gap: "8px" }}
+        >
+          {mostrarFormMobile ? (
+            <><X size={20} /> Ocultar Formulário</>
           ) : (
-            <PlusCircle size={22} color="var(--success)" />
+            <><PlusCircle size={20} /> Novo Lançamento Financeiro</>
           )}
-          {idEdicao ? "Editar Lançamento" : "Novo Lançamento"}
-        </h3>
+        </button>
+      )}
 
-        {isAdmin ? (
-          <form onSubmit={salvar}>
-            <div className="form-row">
-              <div className="form-group">
-                <label>Valor da Operação (R$)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={isencaoMes ? "0" : formData.valor}
-                  onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
-                  placeholder="Ex: 50,00"
-                  required={!isencaoMes}
-                  disabled={isencaoMes}
-                />
-              </div>
-              <div className="form-group">
-                <label>Data do Pagamento / Lançamento</label>
-                <input
-                  type="text"
-                  placeholder="DD/MM/AAAA"
-                  value={formData.data_pagamento}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      data_pagamento: maskData(e.target.value),
-                    })
-                  }
-                  required
-                />
-              </div>
-            </div>
+      {/* === FORMULÁRIO (Aparece sempre no PC, e só quando ativado no Celular) === */}
+      {(!isMobile || mostrarFormMobile) && (
+        <div className="table-container">
+          <h3>
+            {idEdicao ? (
+              <Pencil size={22} color="var(--warning)" />
+            ) : (
+              <PlusCircle size={22} color="var(--success)" />
+            )}
+            {idEdicao ? "Editar Lançamento" : "Novo Lançamento"}
+          </h3>
 
-            <div className="form-row">
+          {isAdmin ? (
+            <form onSubmit={salvar}>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Valor da Operação (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={isencaoMes ? "0" : formData.valor}
+                    onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
+                    placeholder="Ex: 50,00"
+                    required={!isencaoMes}
+                    disabled={isencaoMes}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Data do Pagamento / Lançamento</label>
+                  <input
+                    type="text"
+                    placeholder="DD/MM/AAAA"
+                    value={formData.data_pagamento}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        data_pagamento: maskData(e.target.value),
+                      })
+                    }
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Tipo de Operação</label>
+                  <select
+                    value={formData.tipo}
+                    onChange={(e) => setFormData({ ...formData, tipo: e.target.value })}
+                  >
+                    <option value="ENTRADA">Entrada de Dinheiro</option>
+                    <option value="SAIDA">Saída de Dinheiro</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Mês de Referência</label>
+                  <input
+                    type="text"
+                    placeholder="MM/AAAA"
+                    value={formData.mes_referencia}
+                    onChange={(e) =>
+                      setFormData({ ...formData, mes_referencia: maskMesAno(e.target.value) })
+                    }
+                    maxLength={7}
+                    required
+                  />
+                </div>
+              </div>
+
               <div className="form-group">
-                <label>Tipo de Operação</label>
+                <label>Categoria do Lançamento</label>
                 <select
-                  value={formData.tipo}
-                  onChange={(e) => setFormData({ ...formData, tipo: e.target.value })}
+                  value={formData.categoria}
+                  onChange={(e) => {
+                    setFormData({ ...formData, categoria: e.target.value });
+                    if (e.target.value !== "MENSALIDADE") setIsencaoMes(false);
+                  }}
                 >
-                  <option value="ENTRADA">Entrada de Dinheiro</option>
-                  <option value="SAIDA">Saída de Dinheiro</option>
+                  <option value="MENSALIDADE">Mensalidade da Corrente</option>
+                  <option value="FESTA">Festa / Evento</option>
+                  <option value="BEBIDA_FUMO">Bebidas e Fumos</option>
+                  <option value="VELA">Compra de Velas</option>
+                  <option value="OUTROS">Outros</option>
                 </select>
               </div>
+
+              {formData.categoria === "FESTA" && (
+                <div className="form-group" style={{ background: 'rgba(139, 92, 246, 0.05)', padding: '15px', borderRadius: '8px', border: '1px solid #8b5cf6', marginTop: '10px' }}>
+                  <label style={{ color: '#8b5cf6', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <PartyPopper size={18} /> Vincular a qual Evento/Festa?
+                  </label>
+                  <select
+                    value={formData.festa_id}
+                    onChange={(e) => setFormData({ ...formData, festa_id: e.target.value })}
+                    style={{ borderColor: '#8b5cf6' }}
+                    required
+                  >
+                    <option value="">Selecione uma festa...</option>
+                    {todasFestas
+                      .filter(f => f.ativa || String(f.id) === String(formData.festa_id))
+                      .map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.nome} {f.ativa === false ? '(Concluída)' : ''}
+                        </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {formData.categoria === "MENSALIDADE" && (
+                <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--bg-sub)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                  <input 
+                    type="checkbox" 
+                    id="isencaoMes" 
+                    checked={isencaoMes} 
+                    onChange={e => {
+                      setIsencaoMes(e.target.checked);
+                      if (e.target.checked) setFormData({...formData, valor: "0"});
+                      else setFormData({...formData, valor: ""});
+                    }} 
+                    style={{ width: '22px', height: '22px', cursor: 'pointer' }}
+                  />
+                  <label htmlFor="isencaoMes" style={{ margin: 0, cursor: 'pointer', fontWeight: 'bold', color: 'var(--text-dark)' }}>
+                    Isentar membro neste mês (Marcador Oficial)
+                  </label>
+                </div>
+              )}
+
+              {formData.categoria === "OUTROS" && (
+                <div className="form-group">
+                  <label>Especifique a Categoria</label>
+                  <input
+                    type="text"
+                    value={outraCat}
+                    placeholder="Ex: Material de Limpeza"
+                    onChange={(e) => setOutraCat(e.target.value)}
+                    required
+                  />
+                </div>
+              )}
+
               <div className="form-group">
-                <label>Mês de Referência</label>
-                <input
-                  type="text"
-                  placeholder="MM/AAAA"
-                  value={formData.mes_referencia}
-                  onChange={(e) =>
-                    setFormData({ ...formData, mes_referencia: maskMesAno(e.target.value) })
-                  }
-                  maxLength={7}
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label>Categoria do Lançamento</label>
-              <select
-                value={formData.categoria}
-                onChange={(e) => {
-                  setFormData({ ...formData, categoria: e.target.value });
-                  if (e.target.value !== "MENSALIDADE") setIsencaoMes(false);
-                }}
-              >
-                <option value="MENSALIDADE">Mensalidade da Corrente</option>
-                <option value="FESTA">Festa / Evento</option>
-                <option value="BEBIDA_FUMO">Bebidas e Fumos</option>
-                <option value="VELA">Compra de Velas</option>
-                <option value="OUTROS">Outros</option>
-              </select>
-            </div>
-
-            {formData.categoria === "FESTA" && (
-              <div className="form-group" style={{ background: 'rgba(139, 92, 246, 0.05)', padding: '15px', borderRadius: '8px', border: '1px solid #8b5cf6', marginTop: '10px' }}>
-                <label style={{ color: '#8b5cf6', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <PartyPopper size={18} /> Vincular a qual Evento/Festa?
-                </label>
+                <label>Vincular a um Membro (Opcional)</label>
                 <select
-                  value={formData.festa_id}
-                  onChange={(e) => setFormData({ ...formData, festa_id: e.target.value })}
-                  style={{ borderColor: '#8b5cf6' }}
-                  required
+                  value={formData.filho_id}
+                  onChange={(e) => setFormData({ ...formData, filho_id: e.target.value })}
                 >
-                  <option value="">Selecione uma festa...</option>
-                  {todasFestas
-                    .filter(f => f.ativa || String(f.id) === String(formData.festa_id))
+                  <option value="">Lançamento Geral da Casa (Sem Vínculo)</option>
+                  {filhos
+                    .filter(f => f.ativo !== false || String(f.id) === String(formData.filho_id))
                     .map((f) => (
                       <option key={f.id} value={f.id}>
-                        {f.nome} {f.ativa === false ? '(Concluída)' : ''}
+                        {f.nome} {f.ativo === false ? '(Inativo)' : ''}
                       </option>
                   ))}
                 </select>
               </div>
-            )}
 
-            {formData.categoria === "MENSALIDADE" && (
-              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--bg-sub)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                <input 
-                  type="checkbox" 
-                  id="isencaoMes" 
-                  checked={isencaoMes} 
-                  onChange={e => {
-                    setIsencaoMes(e.target.checked);
-                    if (e.target.checked) setFormData({...formData, valor: "0"});
-                    else setFormData({...formData, valor: ""});
-                  }} 
-                  style={{ width: '22px', height: '22px', cursor: 'pointer' }}
-                />
-                <label htmlFor="isencaoMes" style={{ margin: 0, cursor: 'pointer', fontWeight: 'bold', color: 'var(--text-dark)' }}>
-                  Isentar membro neste mês (Marcador Oficial)
-                </label>
-              </div>
-            )}
-
-            {formData.categoria === "OUTROS" && (
               <div className="form-group">
-                <label>Especifique a Categoria</label>
-                <input
-                  type="text"
-                  value={outraCat}
-                  placeholder="Ex: Material de Limpeza"
-                  onChange={(e) => setOutraCat(e.target.value)}
-                  required
+                <label>Descrição / Observação (Opcional)</label>
+                <textarea
+                  value={formData.descricao}
+                  onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
+                  placeholder={isencaoMes ? "Isenção concedida neste mês" : "Ex: 1kg Vela Branca / Pgto de Cota"}
+                  rows={2}
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border)",
+                    background: "var(--bg-main)",
+                    color: "var(--text-dark)",
+                    fontFamily: "inherit",
+                    resize: "vertical",
+                  }}
                 />
               </div>
-            )}
 
-            <div className="form-group">
-              <label>Vincular a um Membro (Opcional)</label>
-              <select
-                value={formData.filho_id}
-                onChange={(e) => setFormData({ ...formData, filho_id: e.target.value })}
-              >
-                <option value="">Lançamento Geral da Casa (Sem Vínculo)</option>
-                {filhos
-                  .filter(f => f.ativo !== false || String(f.id) === String(formData.filho_id))
-                  .map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.nome} {f.ativo === false ? '(Inativo)' : ''}
-                    </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Descrição / Observação (Opcional)</label>
-              <textarea
-                value={formData.descricao}
-                onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
-                placeholder={isencaoMes ? "Isenção concedida neste mês" : "Ex: 1kg Vela Branca / Pgto de Cota"}
-                rows={2}
-                style={{
-                  width: "100%",
-                  padding: "12px",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border)",
-                  background: "var(--bg-main)",
-                  color: "var(--text-dark)",
-                  fontFamily: "inherit",
-                  resize: "vertical",
-                }}
-              />
-            </div>
-
-            <div style={{ display: "flex", gap: "15px", marginTop: "20px" }}>
-              <button
-                type="submit"
-                className="btn-primary"
-                style={{
-                  flex: 1,
-                  background: idEdicao ? "var(--warning)" : "var(--primary)",
-                }}
-              >
-                <Save size={20} />{" "}
-                {idEdicao ? "Atualizar Registro" : "Salvar no Caixa"}
-              </button>
-              {idEdicao && (
+              <div style={{ display: "flex", gap: "15px", marginTop: "20px" }}>
                 <button
-                  type="button"
-                  onClick={() => {
-                    setIdEdicao(null);
-                    setIsencaoMes(false);
-                    setFormData({
-                      ...formData,
-                      valor: "",
-                      tipo: "ENTRADA",
-                      categoria: "MENSALIDADE",
-                      mes_referencia: mesFiltro === "TODOS" ? "" : mesFiltro,
-                      data_pagamento: "",
-                      descricao: "",
-                      filho_id: "",
-                      festa_id: "",
-                    });
-                  }}
+                  type="submit"
                   className="btn-primary"
-                  style={{ background: "var(--danger)", width: "auto" }}
+                  style={{
+                    flex: 1,
+                    background: idEdicao ? "var(--warning)" : "var(--primary)",
+                  }}
                 >
-                  <X size={20} /> Cancelar
+                  <Save size={20} />{" "}
+                  {idEdicao ? "Atualizar Registro" : "Salvar no Caixa"}
                 </button>
-              )}
+                {idEdicao && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIdEdicao(null);
+                      setIsencaoMes(false);
+                      setFormData({
+                        ...formData,
+                        valor: "",
+                        tipo: "ENTRADA",
+                        categoria: "MENSALIDADE",
+                        mes_referencia: mesFiltro === "TODOS" ? "" : mesFiltro,
+                        data_pagamento: "",
+                        descricao: "",
+                        filho_id: "",
+                        festa_id: "",
+                      });
+                      if (isMobile) setMostrarFormMobile(false);
+                    }}
+                    className="btn-primary"
+                    style={{ background: "var(--danger)", width: "auto" }}
+                  >
+                    <X size={20} /> Cancelar
+                  </button>
+                )}
+              </div>
+            </form>
+          ) : (
+            <div
+              style={{
+                textAlign: "center",
+                padding: "40px 20px",
+                background: "var(--bg-sub)",
+                borderRadius: "12px",
+                color: "var(--text-muted)",
+              }}
+            >
+              <Lock size={40} style={{ marginBottom: "15px", opacity: 0.5 }} />
+              <h4 style={{ fontSize: "1.1rem", marginBottom: "5px" }}>
+                Cofre Trancado
+              </h4>
+              <p style={{ fontSize: "0.9rem" }}>
+                Modo Leitura: Apenas administradores do Terreiro podem registrar
+                ou alterar lançamentos financeiros.
+              </p>
             </div>
-          </form>
-        ) : (
-          <div
-            style={{
-              textAlign: "center",
-              padding: "40px 20px",
-              background: "var(--bg-sub)",
-              borderRadius: "12px",
-              color: "var(--text-muted)",
-            }}
-          >
-            <Lock size={40} style={{ marginBottom: "15px", opacity: 0.5 }} />
-            <h4 style={{ fontSize: "1.1rem", marginBottom: "5px" }}>
-              Cofre Trancado
-            </h4>
-            <p style={{ fontSize: "0.9rem" }}>
-              Modo Leitura: Apenas administradores do Terreiro podem registrar
-              ou alterar lançamentos financeiros.
-            </p>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       <div className="table-container">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', marginBottom: '15px' }}>
@@ -397,14 +440,12 @@ export function LancamentoFinanceiro({
         </div>
 
         <div className="table-responsive" style={{ maxHeight: "530px", overflowY: "auto", paddingRight: "5px" }}>
-          {/* === CORREÇÃO DE LAYOUT AQUI: tableLayout: "fixed" força o respeito aos tamanhos === */}
           <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
             <thead style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--bg-sub)" }}>
               <tr>
                 <th style={{ width: "40px" }}></th>
                 <th style={{ width: "80px" }}>Mês Ref.</th>
                 <th style={{ width: "auto" }}>Categoria</th>
-                {/* O Valor e Ação ganham um tamanho cravado pra nunca serem espremidos */}
                 <th style={{ width: "110px", textAlign: "right", paddingRight: "15px" }}>Valor</th>
                 <th style={{ width: "90px", textAlign: "center" }}>Ação</th>
               </tr>
@@ -440,7 +481,6 @@ export function LancamentoFinanceiro({
                           <strong>{h.mes_referencia}</strong>
                         </td>
                         
-                        {/* A Coluna categoria agora quebra o texto certinho e a descrição ganha reticências se for longa */}
                         <td data-label="Categoria" style={{ overflow: "hidden" }}>
                           <div style={{ fontWeight: 'bold', fontSize: '0.85rem', wordBreak: 'break-word', lineHeight: '1.2' }}>{h.categoria}</div>
                           {festaVinculada && (
@@ -456,7 +496,7 @@ export function LancamentoFinanceiro({
                               marginTop: '4px', 
                               lineHeight: '1.3',
                               display: '-webkit-box',
-                              WebkitLineClamp: 2, /* Limita a descrição a 2 linhas e bota pontinhos */
+                              WebkitLineClamp: 2, 
                               WebkitBoxOrient: 'vertical',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
@@ -467,7 +507,6 @@ export function LancamentoFinanceiro({
                           )}
                         </td>
 
-                        {/* O Valor não quebra linha nunca mais (whiteSpace: nowrap) */}
                         <td
                           data-label="Valor"
                           style={{
@@ -500,6 +539,9 @@ export function LancamentoFinanceiro({
                                   if (!["MENSALIDADE", "FESTA", "BEBIDA_FUMO", "VELA"].includes(h.categoria)) setOutraCat(h.categoria);
                                   setIdEdicao(h.id);
                                   setIsencaoMes(h.is_isencao === true);
+                                  
+                                  // === MÁGICA DO MOBILE: ABRIR FORM SOZINHO E SUBIR A TELA ===
+                                  if (isMobile) setMostrarFormMobile(true);
                                   window.scrollTo({ top: 0, behavior: "smooth" });
                                 }}
                                 style={{ background: "none", border: "none", cursor: "pointer" }}
