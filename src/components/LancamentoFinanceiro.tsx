@@ -1,21 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../config/supabase";
 import {
-  Trash2,
-  PlusCircle,
-  History,
-  Pencil,
-  Save,
-  X,
-  Lock,
-  ChevronDown,
-  ChevronUp,
-  User,
-  CalendarDays,
-  Tag,
-  AlignLeft,
-  PartyPopper,
-  Filter
+  Trash2, PlusCircle, History, Pencil, Save, X, Lock, ChevronDown, ChevronUp,
+  User, CalendarDays, Tag, AlignLeft, PartyPopper, Filter, Search, Gift
 } from "lucide-react";
 
 const maskData = (v: string) => {
@@ -45,11 +32,13 @@ export function LancamentoFinanceiro({
   const [idEdicao, setIdEdicao] = useState<number | null>(null);
   const [outraCat, setOutraCat] = useState("");
   const [lancamentoExpandido, setLancamentoExpandido] = useState<number | null>(null);
+  
   const [isencaoMes, setIsencaoMes] = useState(false);
+  const [isDoacaoFesta, setIsDoacaoFesta] = useState(false); 
 
   const [tipoFiltro, setTipoFiltro] = useState<"TODOS" | "ENTRADA" | "SAIDA">("TODOS");
+  const [termoBuscaCaixa, setTermoBuscaCaixa] = useState(""); 
 
-  // === LÓGICA DE RESPONSIVIDADE (MOBILE VS PC) ===
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [mostrarFormMobile, setMostrarFormMobile] = useState(false);
 
@@ -58,7 +47,6 @@ export function LancamentoFinanceiro({
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
-  // ==============================================
 
   const [formData, setFormData] = useState({
     valor: "",
@@ -73,22 +61,22 @@ export function LancamentoFinanceiro({
 
   async function carregar() {
     const { data: f } = await supabase.from("filhos").select("id, nome, ativo").order("nome");
-    setFilhos(f || []);
+    setFilhos((f as any[]) || []);
 
     const { data: festas } = await supabase.from("festas").select("id, nome, ativa").order("data_evento", { ascending: false });
-    setTodasFestas(festas || []);
+    setTodasFestas((festas as any[]) || []);
 
     let q = supabase.from("financeiro").select("*").order("id", { ascending: false });
     if (mesFiltro !== "TODOS") q = q.eq("mes_referencia", mesFiltro);
     const { data: h } = await q.limit(50);
-    setHistorico(h || []);
+    setHistorico((h as any[]) || []);
   }
 
   useEffect(() => {
     carregar();
   }, [mesFiltro]);
 
-  async function salvar(e: React.FormEvent) {
+  async function salvar(e: any) {
     e.preventDefault();
     if (!isAdmin) return;
 
@@ -102,8 +90,17 @@ export function LancamentoFinanceiro({
       return;
     }
 
+    if (isDoacaoFesta && !formData.descricao) {
+      alert("Por favor, escreva na 'Descrição / Observação' qual foi o material doado pelo membro!");
+      return;
+    }
+
     const [d, m, y] = formData.data_pagamento.split("/");
-    const valorFinal = isencaoMes ? 0 : parseFloat(formData.valor);
+    const valorFinal = (isencaoMes || isDoacaoFesta) ? 0 : parseFloat(formData.valor);
+
+    let descFinal = formData.descricao;
+    if (isencaoMes && !formData.descricao) descFinal = "Isenção concedida neste mês";
+    if (isDoacaoFesta && !formData.descricao) descFinal = "Doação Material (Não Especificada)";
 
     const payload = {
       ...formData,
@@ -112,7 +109,7 @@ export function LancamentoFinanceiro({
       categoria: formData.categoria === "OUTROS" ? outraCat : formData.categoria,
       filho_id: formData.filho_id || null,
       festa_id: formData.categoria === "FESTA" ? formData.festa_id : null,
-      descricao: isencaoMes && !formData.descricao ? "Isenção concedida neste mês" : formData.descricao,
+      descricao: descFinal,
       is_isencao: isencaoMes 
     };
 
@@ -123,22 +120,16 @@ export function LancamentoFinanceiro({
     }
 
     setFormData({
-      valor: "",
-      tipo: "ENTRADA",
-      categoria: "MENSALIDADE",
+      valor: "", tipo: "ENTRADA", categoria: "MENSALIDADE",
       mes_referencia: mesFiltro === "TODOS" ? "" : mesFiltro,
-      data_pagamento: "",
-      filho_id: "",
-      festa_id: "",
-      descricao: "",
+      data_pagamento: "", filho_id: "", festa_id: "", descricao: "",
     });
     setIdEdicao(null);
     setOutraCat("");
     setIsencaoMes(false);
+    setIsDoacaoFesta(false);
     
-    // Se estiver no celular, fecha o formulário sozinho após salvar pra mostrar a tabela atualizada
     if (isMobile) setMostrarFormMobile(false);
-    
     carregar();
   }
 
@@ -147,25 +138,28 @@ export function LancamentoFinanceiro({
     setLancamentoExpandido(id);
   }
 
-  const historicoFiltrado = historico.filter((h) => {
-    if (tipoFiltro === "TODOS") return true;
-    return h.tipo === tipoFiltro;
+  const historicoFiltrado = historico.filter((h: any) => {
+    const bateFiltro = tipoFiltro === "TODOS" || h.tipo === tipoFiltro;
+    const termo = termoBuscaCaixa.toLowerCase();
+    const bateBusca = !termoBuscaCaixa || 
+                      h.categoria.toLowerCase().includes(termo) || 
+                      (h.descricao && h.descricao.toLowerCase().includes(termo));
+    return bateFiltro && bateBusca;
   });
 
   return (
     <div className="dashboard-grid">
       
-      {/* === BOTÃO DE TOGGLE SÓ APARECE NO CELULAR === */}
       {isMobile && isAdmin && (
         <button
           className="btn-primary"
           onClick={() => {
             setMostrarFormMobile(!mostrarFormMobile);
             if (mostrarFormMobile && idEdicao) {
-              // Cancela a edição se esconder o form
               setIdEdicao(null);
               setFormData({...formData, valor: "", data_pagamento: "", descricao: "", filho_id: "", festa_id: ""});
               setIsencaoMes(false);
+              setIsDoacaoFesta(false);
             }
           }}
           style={{ width: "100%", padding: "15px", fontSize: "1rem", display: "flex", justifyContent: "center", alignItems: "center", gap: "8px" }}
@@ -178,15 +172,10 @@ export function LancamentoFinanceiro({
         </button>
       )}
 
-      {/* === FORMULÁRIO (Aparece sempre no PC, e só quando ativado no Celular) === */}
       {(!isMobile || mostrarFormMobile) && (
         <div className="table-container">
           <h3>
-            {idEdicao ? (
-              <Pencil size={22} color="var(--warning)" />
-            ) : (
-              <PlusCircle size={22} color="var(--success)" />
-            )}
+            {idEdicao ? <Pencil size={22} color="var(--warning)" /> : <PlusCircle size={22} color="var(--success)" />}
             {idEdicao ? "Editar Lançamento" : "Novo Lançamento"}
           </h3>
 
@@ -195,68 +184,35 @@ export function LancamentoFinanceiro({
               <div className="form-row">
                 <div className="form-group">
                   <label>Valor da Operação (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={isencaoMes ? "0" : formData.valor}
-                    onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
-                    placeholder="Ex: 50,00"
-                    required={!isencaoMes}
-                    disabled={isencaoMes}
-                  />
+                  <input type="number" step="0.01" value={(isencaoMes || isDoacaoFesta) ? "0" : formData.valor} onChange={(e: any) => setFormData({ ...formData, valor: e.target.value })} placeholder="Ex: 50,00" required={!(isencaoMes || isDoacaoFesta)} disabled={isencaoMes || isDoacaoFesta} />
                 </div>
                 <div className="form-group">
                   <label>Data do Pagamento / Lançamento</label>
-                  <input
-                    type="text"
-                    placeholder="DD/MM/AAAA"
-                    value={formData.data_pagamento}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        data_pagamento: maskData(e.target.value),
-                      })
-                    }
-                    required
-                  />
+                  <input type="text" placeholder="DD/MM/AAAA" value={formData.data_pagamento} onChange={(e: any) => setFormData({ ...formData, data_pagamento: maskData(e.target.value) }) } required />
                 </div>
               </div>
 
               <div className="form-row">
                 <div className="form-group">
                   <label>Tipo de Operação</label>
-                  <select
-                    value={formData.tipo}
-                    onChange={(e) => setFormData({ ...formData, tipo: e.target.value })}
-                  >
+                  <select value={formData.tipo} onChange={(e: any) => setFormData({ ...formData, tipo: e.target.value })}>
                     <option value="ENTRADA">Entrada de Dinheiro</option>
                     <option value="SAIDA">Saída de Dinheiro</option>
                   </select>
                 </div>
                 <div className="form-group">
                   <label>Mês de Referência</label>
-                  <input
-                    type="text"
-                    placeholder="MM/AAAA"
-                    value={formData.mes_referencia}
-                    onChange={(e) =>
-                      setFormData({ ...formData, mes_referencia: maskMesAno(e.target.value) })
-                    }
-                    maxLength={7}
-                    required
-                  />
+                  <input type="text" placeholder="MM/AAAA" value={formData.mes_referencia} onChange={(e: any) => setFormData({ ...formData, mes_referencia: maskMesAno(e.target.value) }) } maxLength={7} required />
                 </div>
               </div>
 
               <div className="form-group">
                 <label>Categoria do Lançamento</label>
-                <select
-                  value={formData.categoria}
-                  onChange={(e) => {
+                <select value={formData.categoria} onChange={(e: any) => {
                     setFormData({ ...formData, categoria: e.target.value });
                     if (e.target.value !== "MENSALIDADE") setIsencaoMes(false);
-                  }}
-                >
+                    if (e.target.value !== "FESTA") setIsDoacaoFesta(false);
+                  }}>
                   <option value="MENSALIDADE">Mensalidade da Corrente</option>
                   <option value="FESTA">Festa / Evento</option>
                   <option value="BEBIDA_FUMO">Bebidas e Fumos</option>
@@ -267,40 +223,36 @@ export function LancamentoFinanceiro({
 
               {formData.categoria === "FESTA" && (
                 <div className="form-group" style={{ background: 'rgba(139, 92, 246, 0.05)', padding: '15px', borderRadius: '8px', border: '1px solid #8b5cf6', marginTop: '10px' }}>
-                  <label style={{ color: '#8b5cf6', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <label style={{ color: '#8b5cf6', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '10px' }}>
                     <PartyPopper size={18} /> Vincular a qual Evento/Festa?
                   </label>
-                  <select
-                    value={formData.festa_id}
-                    onChange={(e) => setFormData({ ...formData, festa_id: e.target.value })}
-                    style={{ borderColor: '#8b5cf6' }}
-                    required
-                  >
+                  <select value={formData.festa_id} onChange={(e: any) => setFormData({ ...formData, festa_id: e.target.value })} style={{ borderColor: '#8b5cf6' }} required>
                     <option value="">Selecione uma festa...</option>
-                    {todasFestas
-                      .filter(f => f.ativa || String(f.id) === String(formData.festa_id))
-                      .map((f) => (
-                        <option key={f.id} value={f.id}>
-                          {f.nome} {f.ativa === false ? '(Concluída)' : ''}
-                        </option>
+                    {todasFestas.filter((f: any) => f.ativa || String(f.id) === String(formData.festa_id)).map((f: any) => (
+                        <option key={f.id} value={f.id}>{f.nome} {f.ativa === false ? '(Concluída)' : ''}</option>
                     ))}
                   </select>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '15px', borderTop: '1px solid rgba(139, 92, 246, 0.2)', paddingTop: '15px' }}>
+                    <input type="checkbox" id="doacaoFesta" checked={isDoacaoFesta} onChange={(e: any) => {
+                        setIsDoacaoFesta(e.target.checked);
+                        if (e.target.checked) setFormData({...formData, valor: "0", tipo: "ENTRADA"});
+                        else setFormData({...formData, valor: ""});
+                      }} style={{ width: '22px', height: '22px', cursor: 'pointer', accentColor: '#8b5cf6' }} />
+                    <label htmlFor="doacaoFesta" style={{ margin: 0, cursor: 'pointer', fontWeight: 'bold', color: '#8b5cf6', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Gift size={18}/> Marcar como Doação Material (Trava valor em R$ 0,00)
+                    </label>
+                  </div>
                 </div>
               )}
 
               {formData.categoria === "MENSALIDADE" && (
                 <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--bg-sub)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                  <input 
-                    type="checkbox" 
-                    id="isencaoMes" 
-                    checked={isencaoMes} 
-                    onChange={e => {
+                  <input type="checkbox" id="isencaoMes" checked={isencaoMes} onChange={(e: any) => {
                       setIsencaoMes(e.target.checked);
                       if (e.target.checked) setFormData({...formData, valor: "0"});
                       else setFormData({...formData, valor: ""});
-                    }} 
-                    style={{ width: '22px', height: '22px', cursor: 'pointer' }}
-                  />
+                    }} style={{ width: '22px', height: '22px', cursor: 'pointer' }} />
                   <label htmlFor="isencaoMes" style={{ margin: 0, cursor: 'pointer', fontWeight: 'bold', color: 'var(--text-dark)' }}>
                     Isentar membro neste mês (Marcador Oficial)
                   </label>
@@ -310,110 +262,48 @@ export function LancamentoFinanceiro({
               {formData.categoria === "OUTROS" && (
                 <div className="form-group">
                   <label>Especifique a Categoria</label>
-                  <input
-                    type="text"
-                    value={outraCat}
-                    placeholder="Ex: Material de Limpeza"
-                    onChange={(e) => setOutraCat(e.target.value)}
-                    required
-                  />
+                  <input type="text" value={outraCat} placeholder="Ex: Material de Limpeza" onChange={(e: any) => setOutraCat(e.target.value)} required />
                 </div>
               )}
 
               <div className="form-group">
                 <label>Vincular a um Membro (Opcional)</label>
-                <select
-                  value={formData.filho_id}
-                  onChange={(e) => setFormData({ ...formData, filho_id: e.target.value })}
-                >
+                <select value={formData.filho_id} onChange={(e: any) => setFormData({ ...formData, filho_id: e.target.value })}>
                   <option value="">Lançamento Geral da Casa (Sem Vínculo)</option>
-                  {filhos
-                    .filter(f => f.ativo !== false || String(f.id) === String(formData.filho_id))
-                    .map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.nome} {f.ativo === false ? '(Inativo)' : ''}
-                      </option>
+                  {filhos.filter((f: any) => f.ativo !== false || String(f.id) === String(formData.filho_id)).map((f: any) => (
+                      <option key={f.id} value={f.id}>{f.nome} {f.ativo === false ? '(Inativo)' : ''}</option>
                   ))}
                 </select>
               </div>
 
               <div className="form-group">
                 <label>Descrição / Observação (Opcional)</label>
-                <textarea
-                  value={formData.descricao}
-                  onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
-                  placeholder={isencaoMes ? "Isenção concedida neste mês" : "Ex: 1kg Vela Branca / Pgto de Cota"}
-                  rows={2}
-                  style={{
-                    width: "100%",
-                    padding: "12px",
-                    borderRadius: "8px",
-                    border: "1px solid var(--border)",
-                    background: "var(--bg-main)",
-                    color: "var(--text-dark)",
-                    fontFamily: "inherit",
-                    resize: "vertical",
-                  }}
+                <textarea value={formData.descricao} onChange={(e: any) => setFormData({ ...formData, descricao: e.target.value })}
+                  placeholder={ isencaoMes ? "Isenção concedida neste mês" : isDoacaoFesta ? "Ex: 2 Fardos de Guaraná e 1kg de Farofa" : "Ex: 1kg Vela Branca / Pgto de Cota" }
+                  rows={2} style={{ width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-main)", color: "var(--text-dark)", fontFamily: "inherit", resize: "vertical" }}
                 />
               </div>
 
               <div style={{ display: "flex", gap: "15px", marginTop: "20px" }}>
-                <button
-                  type="submit"
-                  className="btn-primary"
-                  style={{
-                    flex: 1,
-                    background: idEdicao ? "var(--warning)" : "var(--primary)",
-                  }}
-                >
-                  <Save size={20} />{" "}
-                  {idEdicao ? "Atualizar Registro" : "Salvar no Caixa"}
+                <button type="submit" className="btn-primary" style={{ flex: 1, background: idEdicao ? "var(--warning)" : "var(--primary)" }}>
+                  <Save size={20} /> {idEdicao ? "Atualizar Registro" : "Salvar no Caixa"}
                 </button>
                 {idEdicao && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIdEdicao(null);
-                      setIsencaoMes(false);
-                      setFormData({
-                        ...formData,
-                        valor: "",
-                        tipo: "ENTRADA",
-                        categoria: "MENSALIDADE",
-                        mes_referencia: mesFiltro === "TODOS" ? "" : mesFiltro,
-                        data_pagamento: "",
-                        descricao: "",
-                        filho_id: "",
-                        festa_id: "",
-                      });
+                  <button type="button" onClick={() => {
+                      setIdEdicao(null); setIsencaoMes(false); setIsDoacaoFesta(false);
+                      setFormData({ valor: "", tipo: "ENTRADA", categoria: "MENSALIDADE", mes_referencia: mesFiltro === "TODOS" ? "" : mesFiltro, data_pagamento: "", descricao: "", filho_id: "", festa_id: "" });
                       if (isMobile) setMostrarFormMobile(false);
-                    }}
-                    className="btn-primary"
-                    style={{ background: "var(--danger)", width: "auto" }}
-                  >
+                    }} className="btn-primary" style={{ background: "var(--danger)", width: "auto" }}>
                     <X size={20} /> Cancelar
                   </button>
                 )}
               </div>
             </form>
           ) : (
-            <div
-              style={{
-                textAlign: "center",
-                padding: "40px 20px",
-                background: "var(--bg-sub)",
-                borderRadius: "12px",
-                color: "var(--text-muted)",
-              }}
-            >
+            <div style={{ textAlign: "center", padding: "40px 20px", background: "var(--bg-sub)", borderRadius: "12px", color: "var(--text-muted)" }}>
               <Lock size={40} style={{ marginBottom: "15px", opacity: 0.5 }} />
-              <h4 style={{ fontSize: "1.1rem", marginBottom: "5px" }}>
-                Cofre Trancado
-              </h4>
-              <p style={{ fontSize: "0.9rem" }}>
-                Modo Leitura: Apenas administradores do Terreiro podem registrar
-                ou alterar lançamentos financeiros.
-              </p>
+              <h4 style={{ fontSize: "1.1rem", marginBottom: "5px" }}>Cofre Trancado</h4>
+              <p style={{ fontSize: "0.9rem" }}>Modo Leitura: Apenas administradores do Terreiro podem registar ou alterar lançamentos financeiros.</p>
             </div>
           )}
         </div>
@@ -425,17 +315,26 @@ export function LancamentoFinanceiro({
             <History size={22} color="var(--secondary)" /> Últimas Movimentações ({mesFiltro})
           </h3>
           
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Filter size={18} color="var(--text-muted)" />
-            <select 
-              value={tipoFiltro} 
-              onChange={(e) => setTipoFiltro(e.target.value as any)}
-              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-sub)', color: 'var(--text-dark)', fontWeight: 'bold' }}
-            >
-              <option value="TODOS">Todas Movimentações</option>
-              <option value="ENTRADA">🟢 Só Entradas</option>
-              <option value="SAIDA">🔴 Só Saídas</option>
-            </select>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
+            <div className="input-with-icon" style={{ maxWidth: '100%', margin: 0 }}>
+              <Search size={16} className="input-icon" style={{ color: 'var(--primary)' }} />
+              <input 
+                type="text" 
+                placeholder="Buscar ex: vela..." 
+                value={termoBuscaCaixa}
+                onChange={(e: any) => setTermoBuscaCaixa(e.target.value)}
+                style={{ padding: '8px 12px 8px 35px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '0.85rem' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Filter size={18} color="var(--text-muted)" />
+              <select value={tipoFiltro} onChange={(e: any) => setTipoFiltro(e.target.value as any)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-sub)', color: 'var(--text-dark)', fontWeight: 'bold' }}>
+                <option value="TODOS">Todas</option>
+                <option value="ENTRADA">🟢 Entradas</option>
+                <option value="SAIDA">🔴 Saídas</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -450,122 +349,44 @@ export function LancamentoFinanceiro({
                 <th style={{ width: "90px", textAlign: "center" }}>Ação</th>
               </tr>
             </thead>
-
             <tbody>
               {historicoFiltrado.length === 0 ? (
-                <tr>
-                  <td colSpan={5} style={{ textAlign: "center", padding: "20px" }}>
-                    Nenhum lançamento encontrado para este filtro.
-                  </td>
-                </tr>
+                <tr><td colSpan={5} style={{ textAlign: "center", padding: "20px" }}>Nenhum lançamento encontrado.</td></tr>
               ) : (
-                historicoFiltrado.map((h) => {
-                  const filhoVinculado = filhos.find((f) => f.id === h.filho_id);
-                  const festaVinculada = todasFestas.find((f) => f.id === h.festa_id);
+                historicoFiltrado.map((h: any) => {
+                  const filhoVinculado = filhos.find((f: any) => f.id === h.filho_id);
+                  const festaVinculada = todasFestas.find((f: any) => f.id === h.festa_id);
 
                   return (
                     <React.Fragment key={h.id}>
-                      <tr
-                        className={`main-row ${lancamentoExpandido === h.id ? "is-expanded" : ""}`}
-                        onClick={() => toggleExpandir(h.id)}
-                        style={{ cursor: "pointer" }}
-                      >
-                        <td style={{ textAlign: "center" }}>
-                          {lancamentoExpandido === h.id ? (
-                            <ChevronUp size={22} color="var(--text-muted)" />
-                          ) : (
-                            <ChevronDown size={22} color="var(--text-muted)" />
-                          )}
-                        </td>
-                        <td data-label="Mês Ref.">
-                          <strong>{h.mes_referencia}</strong>
-                        </td>
+                      <tr className={`main-row ${lancamentoExpandido === h.id ? "is-expanded" : ""}`} onClick={() => toggleExpandir(h.id)} style={{ cursor: "pointer" }}>
+                        <td style={{ textAlign: "center" }}>{lancamentoExpandido === h.id ? <ChevronUp size={22} color="var(--text-muted)" /> : <ChevronDown size={22} color="var(--text-muted)" />}</td>
+                        <td data-label="Mês Ref."><strong>{h.mes_referencia}</strong></td>
                         
                         <td data-label="Categoria" style={{ overflow: "hidden" }}>
                           <div style={{ fontWeight: 'bold', fontSize: '0.85rem', wordBreak: 'break-word', lineHeight: '1.2' }}>{h.categoria}</div>
-                          {festaVinculada && (
-                            <span style={{display: 'block', fontSize: '0.75rem', color: '#8b5cf6', fontWeight: 'bold', marginTop: '2px', wordBreak: 'break-word'}}>
-                              Festa: {festaVinculada.nome}
-                            </span>
-                          )}
-                          {h.descricao && (
-                            <div style={{ 
-                              fontSize: '0.75rem', 
-                              color: 'var(--text-muted)', 
-                              fontStyle: 'italic', 
-                              marginTop: '4px', 
-                              lineHeight: '1.3',
-                              display: '-webkit-box',
-                              WebkitLineClamp: 2, 
-                              WebkitBoxOrient: 'vertical',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              wordBreak: 'break-word'
-                            }}>
-                              "{h.descricao}"
-                            </div>
-                          )}
+                          {festaVinculada && <span style={{display: 'block', fontSize: '0.75rem', color: '#8b5cf6', fontWeight: 'bold', marginTop: '2px', wordBreak: 'break-word'}}>Festa: {festaVinculada.nome}</span>}
+                          {h.descricao && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '4px', lineHeight: '1.3', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis', wordBreak: 'break-word' }}>"{h.descricao}"</div>}
                         </td>
 
-                        <td
-                          data-label="Valor"
-                          style={{
-                            color: h.tipo === "ENTRADA" ? "var(--success)" : "var(--danger)",
-                            fontWeight: 800,
-                            textAlign: "right",
-                            paddingRight: "15px",
-                            whiteSpace: "nowrap"
-                          }}
-                        >
-                          {h.tipo === "ENTRADA" ? "+ " : "- "}R${" "}
-                          {h.valor.toFixed(2)}
+                        <td data-label="Valor" style={{ color: h.tipo === "ENTRADA" ? "var(--success)" : "var(--danger)", fontWeight: 800, textAlign: "right", paddingRight: "15px", whiteSpace: "nowrap" }}>
+                          {h.tipo === "ENTRADA" ? "+ " : "- "}R$ {h.valor.toFixed(2)}
                         </td>
 
-                        <td data-label="Ação" className="action-cell" onClick={(e) => e.stopPropagation()} style={{ textAlign: "center", whiteSpace: "nowrap" }}>
+                        <td data-label="Ação" className="action-cell" onClick={(e: any) => e.stopPropagation()} style={{ textAlign: "center", whiteSpace: "nowrap" }}>
                           {isAdmin ? (
                             <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
-                              <button
-                                onClick={() => {
-                                  setFormData({
-                                    valor: h.valor.toString(),
-                                    tipo: h.tipo,
-                                    categoria: ["MENSALIDADE", "FESTA", "BEBIDA_FUMO", "VELA"].includes(h.categoria) ? h.categoria : "OUTROS",
-                                    mes_referencia: h.mes_referencia,
-                                    data_pagamento: h.data_pagamento.split("-").reverse().join("/"),
-                                    filho_id: h.filho_id || "",
-                                    festa_id: h.festa_id || "",
-                                    descricao: h.descricao || "",
-                                  });
+                              <button onClick={() => {
+                                  setFormData({ valor: h.valor.toString(), tipo: h.tipo, categoria: ["MENSALIDADE", "FESTA", "BEBIDA_FUMO", "VELA"].includes(h.categoria) ? h.categoria : "OUTROS", mes_referencia: h.mes_referencia, data_pagamento: h.data_pagamento.split("-").reverse().join("/"), filho_id: h.filho_id || "", festa_id: h.festa_id || "", descricao: h.descricao || "" });
                                   if (!["MENSALIDADE", "FESTA", "BEBIDA_FUMO", "VELA"].includes(h.categoria)) setOutraCat(h.categoria);
-                                  setIdEdicao(h.id);
-                                  setIsencaoMes(h.is_isencao === true);
-                                  
-                                  // === MÁGICA DO MOBILE: ABRIR FORM SOZINHO E SUBIR A TELA ===
-                                  if (isMobile) setMostrarFormMobile(true);
-                                  window.scrollTo({ top: 0, behavior: "smooth" });
-                                }}
-                                style={{ background: "none", border: "none", cursor: "pointer" }}
-                                title="Editar"
-                              >
-                                <Pencil size={18} color="var(--warning)" />
-                              </button>
-
-                              <button
-                                onClick={async () => {
-                                  if (window.confirm("Tem certeza que deseja excluir este lançamento do caixa?")) {
-                                    await supabase.from("financeiro").delete().eq("id", h.id);
-                                    carregar();
-                                  }
-                                }}
-                                style={{ background: "none", border: "none", cursor: "pointer" }}
-                                title="Excluir"
-                              >
-                                <Trash2 size={18} color="var(--danger)" />
-                              </button>
+                                  setIdEdicao(h.id); setIsencaoMes(h.is_isencao === true); setIsDoacaoFesta(h.categoria === "FESTA" && h.valor === 0);
+                                  if (isMobile) setMostrarFormMobile(true); window.scrollTo({ top: 0, behavior: "smooth" });
+                                }} style={{ background: "none", border: "none", cursor: "pointer" }} title="Editar"><Pencil size={18} color="var(--warning)" /></button>
+                              <button onClick={async () => {
+                                  if (window.confirm("Tem certeza que deseja excluir este lançamento do caixa?")) { await supabase.from("financeiro").delete().eq("id", h.id); carregar(); }
+                                }} style={{ background: "none", border: "none", cursor: "pointer" }} title="Excluir"><Trash2 size={18} color="var(--danger)" /></button>
                             </div>
-                          ) : (
-                            <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold" }}>--</div>
-                          )}
+                          ) : (<div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold" }}>--</div>)}
                         </td>
                       </tr>
 
@@ -575,55 +396,27 @@ export function LancamentoFinanceiro({
                             <div className="crm-box" style={{ background: "var(--bg-main)" }}>
                               <div style={{ display: "flex", flexWrap: "wrap", gap: "25px", padding: "10px" }}>
                                 <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                                  <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "5px" }}>
-                                    <CalendarDays size={16} /> Data:
-                                  </span>
-                                  <div style={{ fontWeight: 800, color: "var(--text-dark)" }}>
-                                    {h.data_pagamento.split("-").reverse().join("/")}
-                                  </div>
+                                  <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "5px" }}><CalendarDays size={16} /> Data:</span>
+                                  <div style={{ fontWeight: 800, color: "var(--text-dark)" }}>{h.data_pagamento.split("-").reverse().join("/")}</div>
                                 </div>
-
                                 <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                                  <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "5px" }}>
-                                    <User size={16} /> Vínculo Pessoal:
-                                  </span>
-                                  <div style={{ fontWeight: 800, color: filhoVinculado ? "var(--primary)" : "var(--text-dark)" }}>
-                                    {filhoVinculado ? `${filhoVinculado.nome} ${filhoVinculado.ativo === false ? '(Inativo)' : ''}` : "Lançamento Geral"}
-                                  </div>
+                                  <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "5px" }}><User size={16} /> Vínculo Pessoal:</span>
+                                  <div style={{ fontWeight: 800, color: filhoVinculado ? "var(--primary)" : "var(--text-dark)" }}>{filhoVinculado ? `${filhoVinculado.nome} ${filhoVinculado.ativo === false ? '(Inativo)' : ''}` : "Lançamento Geral"}</div>
                                 </div>
-                                
                                 {festaVinculada && (
                                   <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                                    <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "5px" }}>
-                                      <PartyPopper size={16} /> Vínculo de Festa:
-                                    </span>
-                                    <div style={{ fontWeight: 800, color: "#8b5cf6" }}>
-                                      {festaVinculada.nome}
-                                    </div>
+                                    <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "5px" }}><PartyPopper size={16} /> Vínculo de Festa:</span>
+                                    <div style={{ fontWeight: 800, color: "#8b5cf6" }}>{festaVinculada.nome}</div>
                                   </div>
                                 )}
-
                                 <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                                  <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "5px" }}>
-                                    <Tag size={16} /> Natureza:
-                                  </span>
-                                  <div>
-                                    {h.tipo === "ENTRADA" ? (
-                                      <span className="badge-status badge-pago">ENTRADA</span>
-                                    ) : (
-                                      <span className="badge-status badge-pendente">SAÍDA</span>
-                                    )}
-                                  </div>
+                                  <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "5px" }}><Tag size={16} /> Natureza:</span>
+                                  <div>{h.tipo === "ENTRADA" ? (<span className="badge-status badge-pago">ENTRADA</span>) : (<span className="badge-status badge-pendente">SAÍDA</span>)}</div>
                                 </div>
-
                                 {h.descricao && (
                                   <div style={{ display: "flex", flexDirection: "column", gap: "5px", width: "100%", marginTop: "10px", paddingTop: "10px", borderTop: "1px solid var(--border)" }}>
-                                    <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "5px" }}>
-                                      <AlignLeft size={16} /> Observações Completas:
-                                    </span>
-                                    <div style={{ color: "var(--text-dark)", lineHeight: "1.5", fontStyle: "italic" }}>
-                                      "{h.descricao}"
-                                    </div>
+                                    <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "5px" }}><AlignLeft size={16} /> Observações Completas:</span>
+                                    <div style={{ color: "var(--text-dark)", lineHeight: "1.5", fontStyle: "italic" }}>"{h.descricao}"</div>
                                   </div>
                                 )}
                               </div>

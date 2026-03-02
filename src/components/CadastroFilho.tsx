@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../config/supabase'
-import { Save, X, UploadCloud, User } from 'lucide-react'
+import { Save, X, UploadCloud, User, BadgeAlert } from 'lucide-react'
 
 // 1. Trouxemos a máscara de data para cá!
 const maskData = (v: string) => {
@@ -21,23 +21,49 @@ export function CadastroFilho({ filhoEditando, onSucesso, onCancelar }: any) {
   const [nome, setNome] = useState('')
   const [dataNascimento, setDataNascimento] = useState('')
   const [dataEntrada, setDataEntrada] = useState('')
+  const [cargo, setCargo] = useState('Médium')
   const [isento, setIsento] = useState(false)
   const [diaVencimento, setDiaVencimento] = useState(10)
   const [fotoUrl, setFotoUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
 
+  const cargosDisponiveis = [
+    "Médium",
+    "Mãe de Santo",
+    "Pai Pequeno",
+    "Capitão / Capitã",
+    "Curimbeiro(a)",
+    "Cambone",
+  ];
+
+  const cargosIsentos = [
+    "Mãe de Santo",
+    "Pai Pequeno",
+    "Curimbeiro(a)",
+    "Capitão / Capitã",
+  ];
+
   useEffect(() => {
     if (filhoEditando) {
       setNome(filhoEditando.nome)
-      // Traduz do Banco (AAAA-MM-DD) pro visual BR (DD/MM/AAAA) na hora de editar
       setDataNascimento(formatForInput(filhoEditando.data_nascimento))
       setDataEntrada(formatForInput(filhoEditando.data_entrada))
+      setCargo(filhoEditando.cargo || 'Médium')
       setIsento(filhoEditando.isento || false)
       setDiaVencimento(filhoEditando.dia_vencimento || 10)
       setFotoUrl(filhoEditando.foto_url || '')
     }
   }, [filhoEditando])
+
+  const handleMudancaCargo = (novoCargo: string) => {
+    setCargo(novoCargo);
+    if (cargosIsentos.includes(novoCargo)) {
+      setIsento(true);
+    } else {
+      setIsento(false);
+    }
+  };
 
   async function handleUploadFoto(e: React.ChangeEvent<HTMLInputElement>) {
     try {
@@ -80,6 +106,7 @@ export function CadastroFilho({ filhoEditando, onSucesso, onCancelar }: any) {
       nome, 
       data_nascimento: `${yN}-${mN}-${dN}`, 
       data_entrada: `${yE}-${mE}-${dE}`,
+      cargo,
       isento,
       dia_vencimento: Number(diaVencimento),
       foto_url: fotoUrl, 
@@ -120,6 +147,22 @@ export function CadastroFilho({ filhoEditando, onSucesso, onCancelar }: any) {
         <label>Nome Completo do Membro</label>
         <input type="text" required value={nome} onChange={e => setNome(e.target.value)} placeholder="Ex: João Pedro Vieira" />
       </div>
+
+      {/* NOVO: CAMPO DE CARGO */}
+      <div className="form-group">
+        <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <BadgeAlert size={16} color="var(--primary)" /> Função / Cargo na Casa
+        </label>
+        <select 
+          value={cargo} 
+          onChange={e => handleMudancaCargo(e.target.value)}
+          style={{ background: 'var(--bg-main)', border: '1px solid var(--border)', padding: '10px', borderRadius: '8px', color: 'var(--text-dark)', width: '100%', fontWeight: 'bold' }}
+        >
+          {cargosDisponiveis.map(c => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+      </div>
       
       <div className="form-row">
         <div className="form-group">
@@ -149,12 +192,12 @@ export function CadastroFilho({ filhoEditando, onSucesso, onCancelar }: any) {
       <div className="form-row" style={{ alignItems: 'center', marginTop: '10px' }}>
         <div className="form-group" style={{ flex: 1 }}>
           <label>Dia de Vencimento</label>
-          <input type="number" min="1" max="31" required value={diaVencimento} onChange={e => setDiaVencimento(Number(e.target.value))} placeholder="Ex: 10" />
+          <input type="number" min="1" max="31" required value={diaVencimento} onChange={e => setDiaVencimento(Number(e.target.value))} placeholder="Ex: 10" disabled={isento} style={{ opacity: isento ? 0.5 : 1 }} />
         </div>
         
-        <div className="form-group" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--bg-sub)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', margin: 0 }}>
-          <input type="checkbox" id="isento" checked={isento} onChange={e => setIsento(e.target.checked)} style={{ width: '22px', height: '22px', cursor: 'pointer' }} />
-          <label htmlFor="isento" style={{ margin: 0, cursor: 'pointer', fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-dark)' }}>
+        <div className="form-group" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '10px', background: isento ? 'rgba(139, 92, 246, 0.1)' : 'var(--bg-sub)', padding: '12px', borderRadius: '8px', border: isento ? '1px solid #8b5cf6' : '1px solid var(--border)', margin: 0, transition: 'all 0.3s' }}>
+          <input type="checkbox" id="isento" checked={isento} onChange={e => setIsento(e.target.checked)} style={{ width: '22px', height: '22px', cursor: 'pointer', accentColor: '#8b5cf6' }} />
+          <label htmlFor="isento" style={{ margin: 0, cursor: 'pointer', fontSize: '0.9rem', fontWeight: 700, color: isento ? '#8b5cf6' : 'var(--text-dark)' }}>
             Isento de Mensalidade
           </label>
         </div>

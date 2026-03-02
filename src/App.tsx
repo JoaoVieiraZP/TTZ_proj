@@ -11,7 +11,7 @@ import {
   LayoutDashboard, Users, Wallet, AlertCircle, List, Clock, 
   CalendarDays, Pencil, UserPlus, ChevronDown, 
   ChevronUp, Camera, CheckCircle2, FastForward,
-  Moon, Sun, LogOut, Search, UserMinus, UserCheck, User, AlertTriangle, PartyPopper, FileText
+  Moon, Sun, LogOut, Search, UserMinus, UserCheck, User, AlertTriangle, PartyPopper, FileText, Trash2
 } from 'lucide-react'
 import './App.css'
 
@@ -33,6 +33,7 @@ export default function App() {
   const [resumo, setResumo] = useState({ totalBruto: 0, gastos: 0, lucro: 0, saldoAcumulado: 0 })
   
   const [pendentes, setPendentes] = useState<any[]>([])
+  const [pagantesMes, setPagantesMes] = useState<any[]>([]) 
   const [todosFilhos, setTodosFilhos] = useState<any[]>([])
   const [telaAtiva, setTelaAtiva] = useState<'dashboard' | 'filhos' | 'financeiro' | 'perfil' | 'festas' | 'relatorios'>('dashboard')
   const [mesesDisponiveis, setMesesDisponiveis] = useState<any[]>([])
@@ -65,16 +66,14 @@ export default function App() {
   })
 
   async function carregarDados() {
-    const { data: finAll } = await supabase.from('financeiro').select('tipo, valor, mes_referencia')
+    const { data: finAll } = await supabase.from('financeiro').select('id, tipo, valor, mes_referencia, filho_id, categoria, data_pagamento, is_isencao')
     
     let bMes = 0, sMes = 0, saldoTotal = 0
 
     finAll?.forEach(i => {
-      // 1. SALDO TOTAL ABSOLUTO: Soma tudo independente do mês selecionado
       if (i.tipo === 'ENTRADA') saldoTotal += i.valor
       else saldoTotal -= i.valor
 
-      // 2. SALDO DO MÊS: Respeita o filtro selecionado na tela
       if (mesReferencia === 'TODOS' || i.mes_referencia === mesReferencia) {
         if (i.tipo === 'ENTRADA') bMes += i.valor
         else sMes += i.valor
@@ -121,8 +120,24 @@ export default function App() {
       
       pendentesReais?.sort((a, b) => (a.statusCalc === 'VENCIDA' ? -1 : (b.statusCalc === 'VENCIDA' ? 1 : 0)))
       setPendentes(pendentesReais || [])
+
+      const pagamentosDoMes = finAll?.filter(fin => fin.mes_referencia === mesReferencia && fin.categoria === 'MENSALIDADE' && fin.filho_id) || [];
+      const pagantesMapeados = pagamentosDoMes.map(pg => {
+        const filhoDb = filhosData.find(x => x.id === pg.filho_id);
+        return {
+          id: pg.id,
+          nome: filhoDb?.nome || 'Desconhecido',
+          data_pagamento: pg.data_pagamento,
+          is_isencao: pg.is_isencao
+        };
+      }).filter(p => p.nome !== 'Desconhecido');
+
+      pagantesMapeados.sort((a, b) => new Date(b.data_pagamento).getTime() - new Date(a.data_pagamento).getTime());
+      setPagantesMes(pagantesMapeados);
+
     } else {
       setPendentes([])
+      setPagantesMes([])
     }
 
     const { data: mData } = await supabase.from('financeiro').select('mes_referencia')
@@ -224,6 +239,18 @@ export default function App() {
     }
     setFilhoExpandido(filho.id);
     calcularHistorico(filho).catch(console.error);
+  };
+
+  const handleExcluirDefinitivo = async (membroId: number, membroNome: string) => {
+    if (window.confirm(`⚠️ ATENÇÃO!\n\nVocê tem certeza que deseja EXCLUIR DEFINITIVAMENTE o membro "${membroNome}"?\n\nEsta ação não pode ser desfeita.`)) {
+      const { error } = await supabase.from('filhos').delete().eq('id', membroId);
+      
+      if (error) {
+        alert(`🚨 EXCLUSÃO BLOQUEADA!\n\nO sistema impediu a exclusão porque o membro "${membroNome}" possui lançamentos vinculados no fluxo de caixa (pagamentos ou doações).\n\nMantenha o membro apenas como INATIVO para não corromper a contabilidade passada do terreiro.`);
+      } else {
+        carregarDados();
+      }
+    }
   };
 
   useEffect(() => {
@@ -339,9 +366,12 @@ export default function App() {
               <div className="table-container">
                 <h3><AlertCircle size={22} color="var(--warning)"/> Mensalidades em Aberto</h3>
                 <div className="table-responsive">
-                  <table>
+                  <table style={{ tableLayout: 'fixed', width: '100%' }}>
                     <thead>
-                      <tr><th>Nome do Membro</th><th>Situação</th></tr>
+                      <tr>
+                        <th style={{ width: '65%' }}>Nome do Membro</th>
+                        <th style={{ width: '35%' }}>Situação</th>
+                      </tr>
                     </thead>
                     <tbody>
                       {mesReferencia === 'TODOS' ? (
@@ -351,7 +381,7 @@ export default function App() {
                       ) : (
                         pendentes.map(p => (
                           <tr key={p.id}>
-                            <td data-label="Membro"><strong>{p.nome}</strong></td>
+                            <td data-label="Membro" style={{ wordBreak: 'break-word' }}><strong>{p.nome}</strong></td>
                             <td data-label="Situação">
                               {p.statusCalc === 'VENCIDA' ? (
                                 <span className="badge-status" style={{ background: 'rgba(239, 68, 68, 0.15)', color: 'var(--danger)', border: '1px solid var(--danger)' }}>
@@ -372,23 +402,42 @@ export default function App() {
               </div>
               
               <div className="table-container">
-                <h3><Clock size={22} color="var(--secondary)"/> Entradas Recentes</h3>
+                <h3><CheckCircle2 size={22} color="var(--success)"/> Mensalidades Recebidas</h3>
                 <div className="table-responsive">
-                  <table>
+                  <table style={{ tableLayout: 'fixed', width: '100%' }}>
                     <thead>
-                      <tr><th>Nome</th><th>Data de Entrada</th></tr>
+                      <tr>
+                        <th style={{ width: '65%' }}>Nome do Membro</th>
+                        <th style={{ width: '35%' }}>Data Pgto</th>
+                      </tr>
                     </thead>
                     <tbody>
-                      {todosFilhos.filter(f => f.ativo !== false).slice(0, 5).map(f => (
-                        <tr key={f.id}>
-                          <td data-label="Nome"><strong>{f.nome}</strong></td>
-                          <td data-label="Entrada">{formatarData(f.data_entrada)}</td>
-                        </tr>
-                      ))}
+                      {mesReferencia === 'TODOS' ? (
+                        <tr><td colSpan={2} style={{textAlign:'center', padding:'20px'}}>Filtre por um mês específico acima.</td></tr>
+                      ) : pagantesMes.length === 0 ? (
+                        <tr><td colSpan={2} style={{textAlign:'center', color:'var(--text-muted)', fontWeight:'bold', padding:'20px'}}>Nenhum pagamento recebido ainda.</td></tr>
+                      ) : (
+                        pagantesMes.map(p => (
+                          <tr key={p.id}>
+                            <td data-label="Membro" style={{ wordBreak: 'break-word' }}>
+                              <strong>{p.nome}</strong>
+                              {p.is_isencao && (
+                                <span style={{ marginLeft: '8px', fontSize: '0.7rem', color: '#8b5cf6', background: 'rgba(139, 92, 246, 0.1)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', display: 'inline-block', marginTop: '4px' }}>
+                                  ISENTO
+                                </span>
+                              )}
+                            </td>
+                            <td data-label="Data Pgto" style={{ color: 'var(--success)', fontWeight: 'bold' }}>
+                              {formatarData(p.data_pagamento)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
               </div>
+
             </div>
           </div>
         )}
@@ -438,13 +487,13 @@ export default function App() {
                 </div>
 
                 <div className="table-responsive">
-                  <table>
+                  <table style={{ tableLayout: 'fixed', width: '100%' }}>
                     <thead>
                       <tr>
-                        <th style={{width: '60px'}}></th>
-                        <th style={{width: '40%'}}>Nome Completo</th>
-                        <th style={{width: '30%'}}>Vencimento</th>
-                        <th style={{textAlign: 'center', width: '30%'}}>Gestão</th>
+                        <th style={{ width: '50px' }}></th>
+                        <th style={{ width: 'auto' }}>Nome Completo</th>
+                        <th style={{ width: '110px' }}>Vencimento</th>
+                        <th style={{ textAlign: 'center', width: '120px' }}>Gestão</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -459,21 +508,23 @@ export default function App() {
                               style={{cursor: 'pointer', opacity: f.ativo === false ? 0.7 : 1}}
                             >
                               <td style={{textAlign: 'center'}}>{filhoExpandido === f.id ? <ChevronUp size={22} color="var(--text-muted)"/> : <ChevronDown size={22} color="var(--text-muted)"/>}</td>
+                              
                               <td data-label="Nome" style={{fontWeight: 700}}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                   {f.foto_url ? (
-                                    <img src={f.foto_url} alt="Foto" style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover' }} />
+                                    <img src={f.foto_url} alt="Foto" style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
                                   ) : (
-                                    <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'var(--bg-sub)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User size={16} /></div>
+                                    <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'var(--bg-sub)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><User size={16} /></div>
                                   )}
-                                  {f.nome}
+                                  <span style={{ wordBreak: 'break-word' }}>{f.nome}</span>
                                 </div>
                               </td>
+                              
                               <td data-label="Vencimento">Dia {f.dia_vencimento || 10}</td>
                               
-                              <td data-label="Ações" className="action-cell" onClick={e => e.stopPropagation()}>
+                              <td data-label="Ações" className="action-cell" onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
                                 {isAdmin ? (
-                                  <div style={{display: 'flex', gap: '20px', justifyContent: 'center'}}>
+                                  <div style={{display: 'flex', gap: '15px', justifyContent: 'center', alignItems: 'center'}}>
                                     {f.ativo !== false ? (
                                       <>
                                         <button onClick={() => {setFilhoEditando(f); setMostrarFormFilho(true)}} style={{background:'none', border:'none', cursor:'pointer'}} title="Editar Ficha"><Pencil size={20} color="var(--warning)"/></button>
@@ -484,13 +535,18 @@ export default function App() {
                                         }} style={{background:'none', border:'none', cursor:'pointer'}} title="Desligar Membro"><UserMinus size={20} color="var(--danger)"/></button>
                                       </>
                                     ) : (
-                                      <button onClick={() => { 
-                                          if(window.confirm(`Reativar ${f.nome} na corrente de trabalho?`)) {
-                                            supabase.from('filhos').update({ ativo: true }).eq('id', f.id).then(() => carregarDados())
-                                          }
-                                        }} style={{background:'var(--success)', color: 'white', border:'none', cursor:'pointer', padding: '6px 12px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px'}} title="Reativar Membro">
-                                          <UserCheck size={16}/> REATIVAR
-                                      </button>
+                                      <>
+                                        <button onClick={() => { 
+                                            if(window.confirm(`Reativar ${f.nome} na corrente de trabalho?`)) {
+                                              supabase.from('filhos').update({ ativo: true }).eq('id', f.id).then(() => carregarDados())
+                                            }
+                                          }} style={{background:'var(--success)', color: 'white', border:'none', cursor:'pointer', padding: '6px 12px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px'}} title="Reativar Membro">
+                                            <UserCheck size={16}/>
+                                        </button>
+                                        <button onClick={() => handleExcluirDefinitivo(f.id, f.nome)} style={{background:'none', border:'none', cursor:'pointer'}} title="Excluir Permanentemente">
+                                          <Trash2 size={20} color="var(--danger)" />
+                                        </button>
+                                      </>
                                     )}
                                   </div>
                                 ) : (
@@ -510,8 +566,15 @@ export default function App() {
                                         ) : (
                                           <div className="crm-avatar"><Camera size={35} /></div>
                                         )}
-                                        <h4 style={{fontSize:'1.2rem', fontWeight:800, marginBottom: '5px'}}>{f.nome}</h4>
+                                        <h4 style={{fontSize:'1.2rem', fontWeight:800, marginBottom: '5px', wordBreak: 'break-word'}}>{f.nome}</h4>
                                         
+                                        {/* === EXIBIÇÃO DO CARGO === */}
+                                        <div style={{marginBottom: '12px'}}>
+                                          <span style={{background: 'var(--bg-main)', padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-dark)', border: '1px solid var(--border)'}}>
+                                            {f.cargo || 'Médium'}
+                                          </span>
+                                        </div>
+
                                         {f.ativo === false ? (
                                           <span className="badge-status badge-pendente">MEMBRO INATIVO</span>
                                         ) : f.isento ? (
@@ -521,7 +584,7 @@ export default function App() {
                                         )}
 
                                         <div style={{marginTop: '20px', textAlign: 'left'}}>
-                                          <div className="crm-info-item"><span>ID de Registro:</span> <strong>#{f.id}</strong></div>
+                                          <div className="crm-info-item"><span>ID de Registo:</span> <strong>#{f.id}</strong></div>
                                           <div className="crm-info-item"><span>Dia de Vencimento:</span> <strong>Dia {f.dia_vencimento || 10}</strong></div>
                                           <div className="crm-info-item"><span>Data de Nascimento:</span> <strong>{formatarData(f.data_nascimento)}</strong></div>
                                           <div className="crm-info-item"><span>Entrou na Casa em:</span> <strong>{formatarData(f.data_entrada)}</strong></div>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../config/supabase";
-import { CalendarDays, Download, Copy, CheckCircle2 } from "lucide-react";
+import { CalendarDays, Download, Copy, CheckCircle2, TrendingDown, Users, Activity } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -30,6 +30,7 @@ export function Relatorios() {
   const [copiado, setCopiado] = useState(false);
   const [gerandoPdf, setGerandoPdf] = useState(false);
 
+  // 1. CARREGA OS MESES DISPONÍVEIS QUANDO A TELA ABRE
   useEffect(() => {
     async function carregarDados() {
       const { data } = await supabase.from("financeiro").select("mes_referencia");
@@ -37,9 +38,9 @@ export function Relatorios() {
       const hoje = new Date();
       mSet.add(`${String(hoje.getMonth() + 1).padStart(2, "0")}/${hoje.getFullYear()}`);
       
-      data?.forEach((i) => i.mes_referencia && mSet.add(i.mes_referencia));
+      data?.forEach((i: any) => i.mes_referencia && mSet.add(i.mes_referencia));
       
-      const opcoes = Array.from(mSet).map((v) => {
+      const opcoes = Array.from(mSet).map((v: string) => {
         const [m, a] = v.split("/");
         return { valor: v, label: `${m}/${a}`, ordem: parseInt(`${a}${m}`) };
       }).sort((a, b) => b.ordem - a.ordem);
@@ -50,125 +51,157 @@ export function Relatorios() {
     carregarDados();
   }, []);
 
-  async function gerarRelatorio() {
-    if (!mesSelecionado) return;
-    setCarregando(true);
+  // 2. A MÁGICA AUTOMÁTICA: GERA O RELATÓRIO SOZINHO SEMPRE QUE O MÊS MUDA
+  useEffect(() => {
+    async function carregarDashboardAutomatico() {
+      if (!mesSelecionado) return;
+      setCarregando(true);
 
-    // === BUSCA ABSOLUTA DO SALDO GLOBAL (Invisível na tela, apenas para o PDF/Zap) ===
-    const { data: finGeral } = await supabase.from("financeiro").select("valor, tipo");
-    const saldoTotalConta = (finGeral || []).reduce((acc, m) => m.tipo === "ENTRADA" ? acc + m.valor : acc - m.valor, 0);
+      try {
+        const { data: finGeral } = await supabase.from("financeiro").select("valor, tipo");
+        const saldoTotalConta = (finGeral || []).reduce((acc: number, m: any) => m.tipo === "ENTRADA" ? acc + m.valor : acc - m.valor, 0);
 
-    // === DADOS ESPECÍFICOS DO MÊS ===
-    const { data: finMes } = await supabase.from("financeiro").select("*").eq("mes_referencia", mesSelecionado);
-    const { data: filhos } = await supabase.from("filhos").select("*").order("nome");
-    const { data: festas } = await supabase.from("festas").select("id, nome");
+        const { data: finMes } = await supabase.from("financeiro").select("*").eq("mes_referencia", mesSelecionado);
+        const { data: filhos } = await supabase.from("filhos").select("*").order("nome");
+        const { data: festas } = await supabase.from("festas").select("id, nome");
 
-    const movimentacoes = finMes || [];
-    const listaFilhos = filhos || [];
-    const listaFestas = festas || [];
+        const movimentacoes = finMes || [];
+        const listaFilhos = filhos || [];
+        const listaFestas = festas || [];
 
-    const movGeral = movimentacoes.filter((m) => !m.festa_id);
-    const movFestas = movimentacoes.filter((m) => m.festa_id);
+        const movGeral = movimentacoes.filter((m: any) => !m.festa_id);
+        const movFestas = movimentacoes.filter((m: any) => m.festa_id);
 
-    const entradasGerais = movGeral.filter((m) => m.tipo === "ENTRADA");
-    const saidasGerais = movGeral.filter((m) => m.tipo === "SAIDA").sort((a, b) => new Date(a.data_pagamento).getTime() - new Date(b.data_pagamento).getTime());
+        const entradasGerais = movGeral.filter((m: any) => m.tipo === "ENTRADA");
+        const saidasGerais = movGeral.filter((m: any) => m.tipo === "SAIDA").sort((a: any, b: any) => new Date(a.data_pagamento).getTime() - new Date(b.data_pagamento).getTime());
 
-    const totalEntradasGerais = entradasGerais.reduce((acc, m) => acc + m.valor, 0);
-    const totalSaidasGerais = saidasGerais.reduce((acc, m) => acc + m.valor, 0);
+        const totalEntradasGerais = entradasGerais.reduce((acc: number, m: any) => acc + m.valor, 0);
+        const totalSaidasGerais = saidasGerais.reduce((acc: number, m: any) => acc + m.valor, 0);
 
-    const pagamentosMensalidade = entradasGerais.filter(m => m.categoria === "MENSALIDADE" && m.filho_id);
-    const entradasExtras = entradasGerais.filter(m => m.categoria !== "MENSALIDADE" || !m.filho_id); 
+        const pagamentosMensalidade = entradasGerais.filter((m: any) => m.categoria === "MENSALIDADE" && m.filho_id);
+        const entradasExtras = entradasGerais.filter((m: any) => m.categoria !== "MENSALIDADE" || !m.filho_id); 
 
-    let pagantesQtd = 0;
-    let pendentesQtd = 0;
-    let isentosQtd = 0;
+        let pagantesQtd = 0;
+        let pendentesQtd = 0;
+        let isentosQtd = 0;
 
-    const membrosCorrente = listaFilhos.filter(f => f.ativo !== false).map((f, index) => {
-      const pgto = pagamentosMensalidade.find(m => m.filho_id === f.id);
-      
-      if (f.isento) {
-        isentosQtd++;
-      } else {
-        if (pgto) pagantesQtd++;
-        else pendentesQtd++;
-      }
+        const [mRefStr, aRefStr] = mesSelecionado.split('/');
+        const filtroNum = parseInt(aRefStr) * 100 + parseInt(mRefStr);
 
-      return {
-        qtde: index + 1,
-        nome: f.nome,
-        isento: f.isento,
-        pago: !!pgto,
-        valor: pgto ? pgto.valor : 0,
-        data: pgto ? pgto.data_pagamento : null,
-        formaPg: pgto ? "Pix" : "-",
-        vencimento: f.dia_vencimento || 10
-      };
-    });
+        const membrosValidosParaOMes = listaFilhos.filter((f: any) => {
+          if (f.ativo === false) return false; 
+          
+          if (f.data_entrada) {
+            const [anoE, mesE] = f.data_entrada.split('T')[0].split('-');
+            const entradaNum = parseInt(anoE) * 100 + parseInt(mesE);
+            if (entradaNum > filtroNum) return false; 
+          }
+          return true;
+        });
 
-    const totalMensalidades = membrosCorrente.reduce((acc, m) => acc + m.valor, 0);
+        const membrosCorrente = membrosValidosParaOMes.map((f: any, index: number) => {
+          const pgto = pagamentosMensalidade.find((m: any) => m.filho_id === f.id);
+          
+          if (f.isento) {
+            isentosQtd++;
+          } else {
+            if (pgto) pagantesQtd++;
+            else pendentesQtd++;
+          }
 
-    const festasIdsNoMes = [...new Set(movFestas.map(m => m.festa_id))];
-    const relatorioFestas = festasIdsNoMes.map(festaId => {
-      const nomeFesta = listaFestas.find(f => f.id === festaId)?.nome || "Festa Desconhecida";
-      const movsDestaFesta = movFestas.filter(m => m.festa_id === festaId);
-      const entFesta = movsDestaFesta.filter(m => m.tipo === "ENTRADA");
-      const saiFesta = movsDestaFesta.filter(m => m.tipo === "SAIDA");
-      
-      const abreviarNome = (nomeCompleto: string) => {
-        if (!nomeCompleto) return "";
-        const partes = nomeCompleto.split(" ");
-        return partes.length === 1 ? partes[0] : `${partes[0]} ${partes[partes.length - 1]}`;
-      };
+          return {
+            qtde: index + 1,
+            nome: f.nome,
+            isento: f.isento,
+            pago: !!pgto,
+            valor: pgto ? pgto.valor : 0,
+            data: pgto ? pgto.data_pagamento : null,
+            formaPg: pgto ? "Pix" : "-",
+            vencimento: f.dia_vencimento || 10
+          };
+        });
 
-      const idsPagantesFesta = entFesta.filter(m => m.filho_id).map(m => m.filho_id);
-      
-      const pagantesFestaNomes = listaFilhos
-        .filter(f => f.ativo !== false && idsPagantesFesta.includes(f.id))
-        .map(f => abreviarNome(f.nome))
-        .join(", ");
+        const totalMensalidades = membrosCorrente.reduce((acc: number, m: any) => acc + m.valor, 0);
+
+        const festasIdsNoMes = [...new Set(movFestas.map((m: any) => m.festa_id))];
+        const relatorioFestas = festasIdsNoMes.map(festaId => {
+          const nomeFesta = listaFestas.find((f: any) => f.id === festaId)?.nome || "Festa Desconhecida";
+          const movsDestaFesta = movFestas.filter((m: any) => m.festa_id === festaId);
+          const entFesta = movsDestaFesta.filter((m: any) => m.tipo === "ENTRADA");
+          const saiFesta = movsDestaFesta.filter((m: any) => m.tipo === "SAIDA");
+          
+          const abreviarNome = (nomeCompleto: string) => {
+            if (!nomeCompleto) return "";
+            const partes = nomeCompleto.split(" ");
+            return partes.length === 1 ? partes[0] : `${partes[0]} ${partes[partes.length - 1]}`;
+          };
+
+          const idsPagantesFesta = entFesta.filter((m: any) => m.filho_id).map((m: any) => m.filho_id);
+          
+          const pagantesFestaNomes = membrosValidosParaOMes
+            .filter((f: any) => idsPagantesFesta.includes(f.id))
+            .map((f: any) => abreviarNome(f.nome))
+            .join(", ");
+            
+          const pendentesFestaNomes = membrosValidosParaOMes
+            .filter((f: any) => !f.isento && !idsPagantesFesta.includes(f.id))
+            .map((f: any) => abreviarNome(f.nome))
+            .join(", ");
+
+          return {
+            nome: nomeFesta,
+            entradas: entFesta,
+            totalEntradas: entFesta.reduce((acc: number, m: any) => acc + m.valor, 0),
+            saidas: saiFesta,
+            totalSaidas: saiFesta.reduce((acc: number, m: any) => acc + m.valor, 0),
+            saldo: entFesta.reduce((acc: number, m: any) => acc + m.valor, 0) - saiFesta.reduce((acc: number, m: any) => acc + m.valor, 0),
+            pagantesLista: pagantesFestaNomes || "Nenhum",
+            pendentesLista: pendentesFestaNomes || "Nenhum"
+          };
+        });
+
+        const ranking = saidasGerais.reduce((acc: any, curr: any) => {
+          acc[curr.categoria] = (acc[curr.categoria] || 0) + curr.valor;
+          return acc;
+        }, {} as Record<string, number>);
+        const rankingDespesas = Object.entries(ranking).sort((a: any, b: any) => b[1] - a[1]).slice(0, 3);
         
-      const pendentesFestaNomes = listaFilhos
-        .filter(f => f.ativo !== false && !f.isento && !idsPagantesFesta.includes(f.id))
-        .map(f => abreviarNome(f.nome))
-        .join(", ");
+        const taxaPagamento = (pagantesQtd + pendentesQtd) > 0 
+          ? Math.round((pagantesQtd / (pagantesQtd + pendentesQtd)) * 100) 
+          : 0;
 
-      return {
-        nome: nomeFesta,
-        entradas: entFesta,
-        totalEntradas: entFesta.reduce((acc, m) => acc + m.valor, 0),
-        saidas: saiFesta,
-        totalSaidas: saiFesta.reduce((acc, m) => acc + m.valor, 0),
-        saldo: entFesta.reduce((acc, m) => acc + m.valor, 0) - saiFesta.reduce((acc, m) => acc + m.valor, 0),
-        pagantesLista: pagantesFestaNomes || "Nenhum",
-        pendentesLista: pendentesFestaNomes || "Nenhum"
-      };
-    });
+        const mesesNomes = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+        const [mesNum, anoNum] = mesSelecionado.split("/");
+        const nomeMes = `${mesesNomes[parseInt(mesNum) - 1]}-${anoNum.slice(2)}`;
 
-    const mesesNomes = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-    const [mesNum, anoNum] = mesSelecionado.split("/");
-    const nomeMes = `${mesesNomes[parseInt(mesNum) - 1]}-${anoNum.slice(2)}`;
+        setRelatorio({
+          mesNome: nomeMes,
+          mes: mesSelecionado,
+          geral: {
+            saidas: saidasGerais,
+            entradasExtras: entradasExtras,
+            totalEntradas: totalEntradasGerais,
+            totalSaidas: totalSaidasGerais,
+            saldo: totalEntradasGerais - totalSaidasGerais,
+            saldoConta: saldoTotalConta 
+          },
+          corrente: {
+            lista: membrosCorrente,
+            totalMensalidades,
+            resumo: { pagantes: pagantesQtd, pendentes: pendentesQtd, isentos: isentosQtd }
+          },
+          festas: relatorioFestas,
+          insights: { rankingDespesas, taxaPagamento, totalCorrente: pagantesQtd + pendentesQtd + isentosQtd }
+        });
+      } catch (error) {
+        console.error("Erro ao montar o dashboard: ", error);
+      } finally {
+        setCarregando(false);
+      }
+    }
 
-    setRelatorio({
-      mesNome: nomeMes,
-      mes: mesSelecionado,
-      geral: {
-        saidas: saidasGerais,
-        entradasExtras: entradasExtras,
-        totalEntradas: totalEntradasGerais,
-        totalSaidas: totalSaidasGerais,
-        saldo: totalEntradasGerais - totalSaidasGerais,
-        saldoConta: saldoTotalConta // Puxado apenas para o PDF
-      },
-      corrente: {
-        lista: membrosCorrente,
-        totalMensalidades,
-        resumo: { pagantes: pagantesQtd, pendentes: pendentesQtd, isentos: isentosQtd }
-      },
-      festas: relatorioFestas
-    });
-
-    setCarregando(false);
-  }
+    carregarDashboardAutomatico();
+  }, [mesSelecionado]); // <-- Isto é o que faz ele disparar sozinho ao trocar o mês
 
   function copiarParaWhatsApp() {
     if (!relatorio) return;
@@ -378,37 +411,133 @@ export function Relatorios() {
             <CalendarDays size={20} color="var(--primary)" />
             <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
               <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>Mês de Referência</label>
-              <select value={mesSelecionado} onChange={(e) => setMesSelecionado(e.target.value)} style={{ padding: '8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--bg-main)', color: 'var(--text-dark)' }}>
+              <select 
+                value={mesSelecionado} 
+                onChange={(e) => setMesSelecionado(e.target.value)} 
+                disabled={carregando}
+                style={{ padding: '8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--bg-main)', color: 'var(--text-dark)', opacity: carregando ? 0.7 : 1, cursor: carregando ? 'not-allowed' : 'pointer' }}
+              >
                 <option value="">Selecione...</option>
                 {mesesDisponiveis.map(m => <option key={m.valor} value={m.valor}>{m.label}</option>)}
               </select>
             </div>
           </div>
-          <button className="btn-primary" onClick={gerarRelatorio} disabled={carregando || !mesSelecionado} style={{ padding: '10px 20px', fontSize: '0.9rem' }}>
-            {carregando ? "Calculando..." : "Buscar Dados"}
-          </button>
+          
+          {/* MENSAGEM DE CARREGAMENTO NO LUGAR DO BOTÃO */}
+          {carregando && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontSize: '0.9rem', fontWeight: 'bold' }}>
+              ⏳ Calculando dados do mês...
+            </div>
+          )}
         </div>
       </div>
 
-      {relatorio && (
-        <div style={{ background: "var(--bg-card)", padding: "25px", borderRadius: "8px", border: "1px solid var(--border)" }}> 
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px", borderBottom: "1px solid var(--border)", paddingBottom: "15px", flexWrap: "wrap", gap: "10px" }}>
-            <h2 style={{ fontSize: "1.2rem", color: "var(--text-dark)", margin: 0 }}>
-              PLANILHA DO MÊS PRONTA!
-            </h2>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={copiarParaWhatsApp} style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#25D366', color: '#fff', border: 'none', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold' }}>
-                {copiado ? <CheckCircle2 size={18}/> : <Copy size={18}/>} Copiar (Zap)
-              </button>
-              <button onClick={baixarPDF} disabled={gerandoPdf} style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#e11d48', color: '#fff', border: 'none', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold' }}>
-                <Download size={18}/> {gerandoPdf ? "Montando..." : "Baixar PDF Oficial"}
-              </button>
+      {/* TELA DE DADOS FICA INVISÍVEL ATÉ TERMINAR DE CARREGAR O NOVO MÊS */}
+      {relatorio && !carregando && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'fadeIn 0.5s ease-in-out' }}>
+          
+          <div style={{ background: "var(--bg-card)", padding: "25px", borderRadius: "8px", border: "1px solid var(--border)" }}> 
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "15px" }}>
+              <div>
+                <h2 style={{ fontSize: "1.2rem", color: "var(--text-dark)", margin: '0 0 5px 0' }}>
+                  Análise do Mês Pronta!
+                </h2>
+                <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", margin: 0 }}>
+                  Os dados abaixo representam o fechamento do mês de {relatorio.mes}.
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button onClick={copiarParaWhatsApp} style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#25D366', color: '#fff', border: 'none', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                  {copiado ? <CheckCircle2 size={18}/> : <Copy size={18}/>} Copiar Resumo (Zap)
+                </button>
+                <button onClick={baixarPDF} disabled={gerandoPdf} style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'var(--primary)', color: '#fff', border: 'none', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                  <Download size={18}/> {gerandoPdf ? "Montando..." : "Baixar PDF Oficial"}
+                </button>
+              </div>
             </div>
           </div>
-            <div style={{ color: "var(--text-muted)", fontSize: "0.95rem", lineHeight: "1.6" }}>
-            <p>O relatório mensal contendo todas as entradas, gastos e o balanço total da casa foi gerado com sucesso!</p>
-            <p>Clique no <strong>botão verde</strong> acima para copiar um resumo rápido para o WhatsApp, ou baixe o <strong>PDF oficial</strong> com a planilha completa.</p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+            
+            {/* 1. RANKING DE DESPESAS */}
+            <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <h4 style={{ margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--danger)' }}>
+                <TrendingDown size={20} /> Principais Gastos
+              </h4>
+              {relatorio.insights.rankingDespesas.length === 0 ? (
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Nenhum gasto registrado neste mês.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {relatorio.insights.rankingDespesas.map((item: any, index: number) => (
+                    <div key={item[0]} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-main)', padding: '10px', borderRadius: '6px', borderLeft: '4px solid var(--danger)' }}>
+                      <div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>{index + 1}º Lugar</div>
+                        <div style={{ fontWeight: 800, color: 'var(--text-dark)' }}>{item[0].replace('_', ' ')}</div>
+                      </div>
+                      <div style={{ fontWeight: 'bold', color: 'var(--danger)' }}>
+                        R$ {item[1].toFixed(2)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
+
+            {/* 2. TERMÔMETRO DA CORRENTE */}
+            <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <h4 style={{ margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)' }}>
+                <Users size={20} /> Termometro da Corrente
+              </h4>
+              <div style={{ textAlign: 'center', marginBottom: '15px' }}>
+                <div style={{ fontSize: '2.5rem', fontWeight: 900, color: relatorio.insights.taxaPagamento >= 70 ? 'var(--success)' : 'var(--warning)', lineHeight: '1' }}>
+                  {relatorio.insights.taxaPagamento}%
+                </div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase', marginTop: '5px' }}>Taxa de Pagamento (Adimplência)</div>
+              </div>
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-dark)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <strong style={{ color: 'var(--success)' }}>{relatorio.corrente.resumo.pagantes}</strong> Pagaram
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <strong style={{ color: 'var(--danger)' }}>{relatorio.corrente.resumo.pendentes}</strong> Pendentes
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <strong style={{ color: '#8b5cf6' }}>{relatorio.corrente.resumo.isentos}</strong> Isentos
+                </div>
+              </div>
+              
+              {/* Barra visual de progresso */}
+              <div style={{ width: '100%', height: '8px', background: 'var(--border)', borderRadius: '4px', marginTop: '15px', overflow: 'hidden', display: 'flex' }}>
+                <div style={{ width: `${relatorio.insights.taxaPagamento}%`, background: 'var(--success)' }}></div>
+                <div style={{ width: `${100 - relatorio.insights.taxaPagamento}%`, background: 'var(--danger)' }}></div>
+              </div>
+            </div>
+
+            {/* 3. RESUMO OPERACIONAL */}
+            <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <h4 style={{ margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--success)' }}>
+                <Activity size={20} /> Balanço Operacional
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Arrecadação Total:</span>
+                  <strong style={{ color: 'var(--success)' }}>+ R$ {relatorio.geral.totalEntradas.toFixed(2)}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Gasto Total:</span>
+                  <strong style={{ color: 'var(--danger)' }}>- R$ {relatorio.geral.totalSaidas.toFixed(2)}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-main)', padding: '10px', borderRadius: '6px' }}>
+                  <span style={{ fontWeight: 'bold', color: 'var(--text-dark)' }}>Lucro/Prejuízo:</span>
+                  <strong style={{ color: relatorio.geral.saldo >= 0 ? 'var(--success)' : 'var(--danger)', fontSize: '1.1rem' }}>
+                    R$ {relatorio.geral.saldo.toFixed(2)}
+                  </strong>
+                </div>
+              </div>
+            </div>
+
+          </div>
         </div>
       )}
     </div>
