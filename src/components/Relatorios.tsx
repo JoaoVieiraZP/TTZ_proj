@@ -3,6 +3,7 @@ import { supabase } from "../config/supabase";
 import { CalendarDays, Download, Copy, CheckCircle2, TrendingDown, Users, Activity } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { GerenciarEmails } from "./GerenciarEmails";
 
 // ============================================================================
 // COLOQUE AQUI O CÓDIGO BASE64 DA SUA LOGO
@@ -89,14 +90,31 @@ export function Relatorios() {
         const filtroNum = parseInt(aRefStr) * 100 + parseInt(mRefStr);
 
         const membrosValidosParaOMes = listaFilhos.filter((f: any) => {
-          if (f.ativo === false) return false; 
-          
+          // 1. Trata a Data de Entrada (Quem entrou DEPOIS desse mês, não pode aparecer)
           if (f.data_entrada) {
-            const [anoE, mesE] = f.data_entrada.split('T')[0].split('-');
-            const entradaNum = parseInt(anoE) * 100 + parseInt(mesE);
-            if (entradaNum > filtroNum) return false; 
+            const dataLimpa = f.data_entrada.split('T')[0];
+            const partes = dataLimpa.includes('/') ? dataLimpa.split('/') : dataLimpa.split('-');
+            const anoE = parseInt(dataLimpa.includes('/') ? partes[2] : partes[0]);
+            const mesE = parseInt(dataLimpa.includes('/') ? partes[1] : partes[1]);
+
+            const entradaNum = anoE * 100 + mesE;
+            if (entradaNum > filtroNum) return false; // Entrou no futuro desse relatório! Esconde.
           }
-          return true;
+
+          // 2. Trata a Inatividade (Quem saiu ANTES desse mês, não aparece. Se saiu depois, aparece!)
+          if (f.ativo === false) {
+            if (!f.data_saida) return false; // Se tá inativo e o sistema não sabe quando, esconde por segurança
+            
+            const dataLimpaS = f.data_saida.split('T')[0];
+            const partesS = dataLimpaS.includes('/') ? dataLimpaS.split('/') : dataLimpaS.split('-');
+            const anoS = parseInt(dataLimpaS.includes('/') ? partesS[2] : partesS[0]);
+            const mesS = parseInt(dataLimpaS.includes('/') ? partesS[1] : partesS[1]);
+
+            const saidaNum = anoS * 100 + mesS;
+            if (saidaNum < filtroNum) return false; // Saiu no passado! Esconde.
+          }
+
+          return true; // Se passou pelas duas barreiras, ele fazia parte da corrente neste mês
         });
 
         const membrosCorrente = membrosValidosParaOMes.map((f: any, index: number) => {
@@ -201,7 +219,7 @@ export function Relatorios() {
     }
 
     carregarDashboardAutomatico();
-  }, [mesSelecionado]); // <-- Isto é o que faz ele disparar sozinho ao trocar o mês
+  }, [mesSelecionado]); 
 
   function copiarParaWhatsApp() {
     if (!relatorio) return;
@@ -538,6 +556,12 @@ export function Relatorios() {
             </div>
 
           </div>
+
+          {/* COMPONENTE DE EMAILS INTEGRADO NO FINAL */}
+          <div style={{ marginTop: '40px' }}>
+            <GerenciarEmails />
+          </div>
+
         </div>
       )}
     </div>
