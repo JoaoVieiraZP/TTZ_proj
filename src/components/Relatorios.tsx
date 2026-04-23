@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../config/supabase";
-import { Download, Copy, CheckCircle2, TrendingDown, Users, Activity, CalendarDays } from "lucide-react";
+import { Download, Copy, CheckCircle2, TrendingDown, Users, Activity, CalendarDays, PartyPopper, FileText } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { GerenciarEmails } from "./GerenciarEmails";
@@ -127,6 +127,15 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
           const entFesta = movsDestaFesta.filter((m: any) => m.tipo === "ENTRADA");
           const saiFesta = movsDestaFesta.filter((m: any) => m.tipo === "SAIDA");
           
+          // Enriquecendo os dados da entrada para ter o NOME EXATO do membro
+          const entradasDetalhadas = entFesta.map((m: any) => {
+            const filho = listaFilhos.find((f: any) => f.id === m.filho_id);
+            return {
+              ...m,
+              nomeMembro: filho ? filho.nome : "Visitante / Anônimo"
+            };
+          });
+
           const abreviarNome = (nomeCompleto: string) => {
             if (!nomeCompleto) return "";
             const partes = nomeCompleto.split(" ");
@@ -145,15 +154,21 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
             .map((f: any) => abreviarNome(f.nome))
             .join(", ");
 
+          // NOVA ARRAY: Guarda o nome completo dos pendentes para montarmos a tabela no PDF
+          const pendentesArray = membrosValidosParaOMes
+            .filter((f: any) => !f.isento && !idsPagantesFesta.includes(f.id))
+            .map((f: any) => f.nome);
+
           return {
             nome: nomeFesta,
-            entradas: entFesta,
+            entradas: entradasDetalhadas,
             totalEntradas: entFesta.reduce((acc: number, m: any) => acc + m.valor, 0),
             saidas: saiFesta,
             totalSaidas: saiFesta.reduce((acc: number, m: any) => acc + m.valor, 0),
             saldo: entFesta.reduce((acc: number, m: any) => acc + m.valor, 0) - saiFesta.reduce((acc: number, m: any) => acc + m.valor, 0),
             pagantesLista: pagantesFestaNomes || "Nenhum",
-            pendentesLista: pendentesFestaNomes || "Nenhum"
+            pendentesLista: pendentesFestaNomes || "Nenhum",
+            pendentesArray: pendentesArray
           };
         });
 
@@ -197,7 +212,7 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
     }
 
     carregarDashboardAutomatico();
-  }, [mesFiltro]); // <-- O componente agora reage dinamicamente quando o filtro global do site muda
+  }, [mesFiltro]);
 
   function copiarParaWhatsApp() {
     if (!relatorio) return;
@@ -353,45 +368,138 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
           }
         }
       });
-      alturaLadoDireito = (doc as any).lastAutoTable.finalY + 4;
-
-      relatorio.festas.forEach((f: any) => {
-        const festaBody = [
-          ['Arrecadado Total', formatarMoeda(f.totalEntradas)],
-          ['Gasto Total', `- ${formatarMoeda(f.totalSaidas)}`],
-          [{ content: `(+) AJUDARAM: ${f.pagantesLista}`, colSpan: 2 }],
-          [{ content: `(-) PENDENTES: ${f.pendentesLista}`, colSpan: 2 }]
-        ];
-
-        autoTable(doc, {
-          startY: alturaLadoDireito,
-          margin: { left: 160, right: 10 },
-          head: [[`FESTA: ${f.nome}`, `Saldo: ${formatarMoeda(f.saldo)}`]],
-          body: festaBody,
-          theme: 'grid',
-          headStyles: { fillColor: [255, 242, 204], textColor: 0 },
-          styles: { fontSize: 8, cellPadding: 1.5, textColor: 0, fontStyle: 'bold' },
-          columnStyles: { 0: { cellWidth: 50 }, 1: { halign: 'right' } },
-          willDrawCell: function(data) {
-            if (data.row.index === 1 && data.column.index === 1) data.cell.styles.textColor = [192, 0, 0];
-            if (data.row.index === 2) {
-              data.cell.styles.fontSize = 6;
-              data.cell.styles.fontStyle = 'normal';
-              data.cell.styles.textColor = [0, 100, 0]; 
-            }
-            if (data.row.index === 3) {
-              data.cell.styles.fontSize = 6; 
-              data.cell.styles.fontStyle = 'normal';
-              data.cell.styles.textColor = [192, 0, 0];
-            }
-          }
-        });
-        alturaLadoDireito = (doc as any).lastAutoTable.finalY + 4;
-      });
 
       doc.save(`Balancete_TTZ_${relatorio.mes.replace("/", "-")}.pdf`);
     } catch (error) {
       alert("Houve um erro ao gerar o PDF.");
+    } finally {
+      setGerandoPdf(false);
+    }
+  }
+
+  // === PDF DETALHADO POR FESTA COM TABELA DE PENDENTES ===
+  async function baixarPDFFesta(festa: any) {
+    setGerandoPdf(true);
+    try {
+      const doc = new jsPDF('p', 'mm', 'a4');
+      
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text(`BALANCETE DA FESTA: ${festa.nome.toUpperCase()}`, 10, 15);
+      
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Mês de Referência: ${relatorio.mes} | Emitido em: ${new Date().toLocaleDateString('pt-BR')}`, 10, 21);
+      
+      if (LOGO_BASE64.length > 50) {
+        doc.addImage(LOGO_BASE64, 'PNG', 170, 8, 25, 25);
+      }
+
+      // Tabela de Resumo Financeiro da Festa
+      autoTable(doc, {
+        startY: 30,
+        head: [['RESUMO FINANCEIRO DA FESTA', 'VALOR']],
+        body: [
+          ['Total Arrecadado (Entradas)', `R$ ${formatarMoeda(festa.totalEntradas)}`],
+          ['Total Gasto (Saídas)', `- R$ ${formatarMoeda(festa.totalSaidas)}`],
+          ['Saldo Final da Festa', `R$ ${formatarMoeda(festa.saldo)}`]
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: [255, 242, 204], textColor: 0, fontStyle: 'bold' },
+        styles: { fontSize: 9, cellPadding: 2, textColor: 0 },
+        columnStyles: { 
+          0: { fontStyle: 'bold' },
+          1: { halign: 'right', fontStyle: 'bold' } 
+        },
+        willDrawCell: function(data) {
+          if (data.row.index === 2) {
+            data.cell.styles.fillColor = [242, 242, 242];
+            if (festa.saldo < 0) data.cell.styles.textColor = [192, 0, 0];
+            else data.cell.styles.textColor = [0, 100, 0];
+          }
+        }
+      });
+
+      let alturaAtual = (doc as any).lastAutoTable.finalY + 8;
+      
+      // Tabela de Entradas da Festa (com NOME DO MEMBRO CRUZADO)
+      autoTable(doc, {
+        startY: alturaAtual,
+        head: [['Data', 'Membro / Origem', 'Descrição / Observação', 'Valor']],
+        body: festa.entradas.length > 0 
+          ? festa.entradas.map((e: any) => [
+              formatarDataExcel(e.data_pagamento),
+              e.nomeMembro,
+              e.descricao || "-",
+              `R$ ${formatarMoeda(e.valor)}`
+            ])
+          : [['-', '-', 'Nenhuma arrecadação registrada', '-']],
+        theme: 'grid',
+        headStyles: { fillColor: [226, 239, 218], textColor: [0, 100, 0], fontStyle: 'bold' },
+        styles: { fontSize: 8, cellPadding: 1.5, textColor: 0 },
+        columnStyles: { 
+          0: { cellWidth: 15, halign: 'center' },
+          1: { cellWidth: 60, fontStyle: 'bold' },
+          2: { cellWidth: 'auto' },
+          3: { cellWidth: 25, halign: 'right', fontStyle: 'bold', textColor: [0, 100, 0] } 
+        }
+      });
+
+      alturaAtual = (doc as any).lastAutoTable.finalY + 8;
+      
+      // Tabela de Saídas da Festa
+      autoTable(doc, {
+        startY: alturaAtual,
+        head: [['Data', 'Despesa Registrada (Item / Categoria)', 'Valor Gasto']],
+        body: festa.saidas.length > 0
+          ? festa.saidas.map((s: any) => [
+              formatarDataExcel(s.data_pagamento),
+              s.descricao || s.categoria,
+              `- R$ ${formatarMoeda(s.valor)}`
+            ])
+          : [['-', 'Nenhum gasto registrado nesta festa', '-']],
+        theme: 'grid',
+        headStyles: { fillColor: [248, 215, 218], textColor: [114, 28, 36], fontStyle: 'bold' },
+        styles: { fontSize: 8, cellPadding: 1.5, textColor: 0 },
+        columnStyles: { 
+          0: { cellWidth: 15, halign: 'center' },
+          1: { cellWidth: 'auto' },
+          2: { cellWidth: 25, halign: 'right', fontStyle: 'bold', textColor: [192, 0, 0] } 
+        }
+      });
+
+      alturaAtual = (doc as any).lastAutoTable.finalY + 12;
+
+      // === NOVA TABELA DE PENDENTES (SEGURO PARA O TYPESCRIPT) ===
+      if (festa.pendentesArray && festa.pendentesArray.length > 0) {
+        
+        const corpoPendentes: string[][] = [];
+        const lista: string[] = festa.pendentesArray || [];
+        
+        for (let i = 0; i < lista.length; i += 2) {
+          corpoPendentes.push([
+            lista[i] ? lista[i].toString() : "",
+            lista[i + 1] ? lista[i + 1].toString() : ""
+          ]);
+        }
+
+        autoTable(doc, {
+          startY: alturaAtual,
+          head: [['(-) Médiuns Pendentes (Não registraram ajuda)', '']],
+          body: corpoPendentes,
+          theme: 'grid',
+          headStyles: { fillColor: [248, 215, 218], textColor: [114, 28, 36], fontStyle: 'bold' },
+          styles: { fontSize: 8, cellPadding: 1.5, textColor: [114, 28, 36] },
+          columnStyles: { 
+            0: { cellWidth: 90 },
+            1: { cellWidth: 90 } 
+          }
+        });
+      }
+
+      doc.save(`Balancete_Festa_${festa.nome.replace(/\s+/g, '_')}.pdf`);
+    } catch (err) {
+      alert("Erro ao gerar o PDF exclusivo da festa.");
     } finally {
       setGerandoPdf(false);
     }
@@ -531,6 +639,47 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
             </div>
 
           </div>
+
+          {/* 4. DETALHAMENTO DE FESTAS */}
+          {relatorio.festas && relatorio.festas.length > 0 && (
+            <div style={{ marginTop: '10px' }}>
+              <h3 style={{ margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--text-dark)' }}>
+                <PartyPopper size={24} color="#854d0e" /> Resumo das Festas
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+                {relatorio.festas.map((f: any, index: number) => (
+                  <div key={index} style={{ background: 'var(--bg-card)', border: '1px solid #fde047', borderRadius: '8px', overflow: 'hidden' }}>
+                    <div style={{ background: '#fef08a', padding: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #fde047' }}>
+                      <h4 style={{ margin: 0, color: '#854d0e', fontSize: '1.1rem' }}>🎉 {f.nome}</h4>
+                      <button
+                        onClick={() => baixarPDFFesta(f)}
+                        disabled={gerandoPdf}
+                        style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#ca8a04', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                      >
+                        <FileText size={16} /> PDF Detalhado
+                      </button>
+                    </div>
+                    <div style={{ padding: '20px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Arrecadado:</span>
+                        <strong style={{ color: 'var(--success)' }}>+ R$ {formatarMoeda(f.totalEntradas)}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Gasto:</span>
+                        <strong style={{ color: 'var(--danger)' }}>- R$ {formatarMoeda(f.totalSaidas)}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-main)', padding: '10px', borderRadius: '6px', marginTop: '10px' }}>
+                        <span style={{ fontWeight: 'bold', color: 'var(--text-dark)' }}>Saldo da Festa:</span>
+                        <strong style={{ color: f.saldo >= 0 ? 'var(--success)' : 'var(--danger)', fontSize: '1.1rem' }}>
+                          R$ {formatarMoeda(f.saldo)}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* COMPONENTE DE EMAILS INTEGRADO NO FINAL */}
           <div style={{ marginTop: '40px' }}>

@@ -3,7 +3,7 @@ import { supabase } from "../config/supabase";
 import { 
   PlusCircle, Save, X, CalendarDays, Target, PartyPopper, 
   Pencil, ChevronDown, ChevronUp, Wallet, CheckCircle2, Clock, 
-  TrendingDown, TrendingUp, Trash2, Archive, RotateCcw, Gift
+  TrendingDown, TrendingUp, Trash2, Archive, RotateCcw
 } from "lucide-react";
 
 const maskData = (v: string) => {
@@ -39,7 +39,8 @@ export function GestaoFestas({ isAdmin }: { isAdmin: boolean }) {
     const { data: f } = await supabase.from("festas").select("*").order("data_evento", { ascending: false });
     setFestas(f || []);
 
-    const { data: m } = await supabase.from("filhos").select("id, nome, ativo").order("nome");
+    // CORREÇÃO: Agora puxamos também a coluna "isento" do banco de dados
+    const { data: m } = await supabase.from("filhos").select("id, nome, ativo, isento").order("nome");
     setMembros(m || []);
   }
 
@@ -174,8 +175,12 @@ export function GestaoFestas({ isAdmin }: { isAdmin: boolean }) {
                   }
 
                   const membrosAtivos = membros.filter(m => m.ativo !== false);
+                  
+                  // CORREÇÃO: Divisão exata entre Pagantes, Pendentes REAIS e Isentos
                   const pagantes = membrosAtivos.filter(m => pagantesIds.includes(m.id));
-                  const pendentes = membrosAtivos.filter(m => !pagantesIds.includes(m.id));
+                  const pendentes = membrosAtivos.filter(m => !pagantesIds.includes(m.id) && !m.isento);
+                  const isentos = membrosAtivos.filter(m => !pagantesIds.includes(m.id) && m.isento);
+                  
                   const saldoFesta = totalArrecadado - totalGasto;
 
                   return (
@@ -196,6 +201,7 @@ export function GestaoFestas({ isAdmin }: { isAdmin: boolean }) {
                           {isAdmin ? (
                             <div style={{ display: "flex", gap: "15px", justifyContent: "center" }}>
                               
+                              {/* BOTÃO EDITAR */}
                               <button onClick={() => {
                                   setFormData({ nome: f.nome, data_evento: f.data_evento.split("-").reverse().join("/"), meta_valor: f.meta_valor.toString(), ativa: f.ativa });
                                   setIdEdicao(f.id);
@@ -205,6 +211,7 @@ export function GestaoFestas({ isAdmin }: { isAdmin: boolean }) {
                                 style={{ background: "none", border: "none", cursor: "pointer" }} title="Editar Festa"
                               ><Pencil size={20} color="var(--warning)" /></button>
 
+                              {/* BOTÃO DESATIVAR/ATIVAR RÁPIDO */}
                               <button onClick={async () => {
                                   if (window.confirm(f.ativa ? `Encerrar a arrecadação da festa "${f.nome}"?` : `Reabrir a festa "${f.nome}"?`)) {
                                     await supabase.from("festas").update({ ativa: !f.ativa }).eq("id", f.id);
@@ -217,6 +224,7 @@ export function GestaoFestas({ isAdmin }: { isAdmin: boolean }) {
                                 {f.ativa ? <Archive size={20} color="var(--text-muted)" /> : <RotateCcw size={20} color="var(--success)" />}
                               </button>
 
+                              {/* BOTÃO EXCLUIR */}
                               <button onClick={async () => {
                                   if (window.confirm(`ATENÇÃO: Tem certeza que deseja apagar a festa "${f.nome}" do sistema?`)) {
                                     const { error } = await supabase.from("festas").delete().eq("id", f.id);
@@ -264,12 +272,13 @@ export function GestaoFestas({ isAdmin }: { isAdmin: boolean }) {
                                 <div>
                                   <h4 style={{ marginBottom: '15px', borderBottom: '1px solid var(--border)', paddingBottom: '10px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
                                     <span>Arrecadação na Corrente</span>
-                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{pagantes.length} de {membrosAtivos.length} colaboraram</span>
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{pagantes.length} de {pagantes.length + pendentes.length} pagaram</span>
                                   </h4>
                                   
                                   <div style={{ maxHeight: '300px', overflowY: 'auto', paddingRight: '15px' }}>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                       
+                                      {/* 1. LISTA DE PENDENTES REAIS */}
                                       {pendentes.map(p => (
                                         <div key={`pend-${p.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '8px', borderBottom: '1px solid var(--border)' }}>
                                           <div style={{ color: 'var(--text-dark)', fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: '10px', flex: 1 }} title={p.nome}>
@@ -281,28 +290,29 @@ export function GestaoFestas({ isAdmin }: { isAdmin: boolean }) {
                                         </div>
                                       ))}
 
-                                      {pagantes.map(p => {
-                                        // === LÓGICA DE DOAÇÃO MATERIAL AQUI ===
-                                        const mov = caixaFesta.find(m => m.tipo === 'ENTRADA' && m.filho_id === p.id);
-                                        const isDoacao = mov && mov.valor === 0;
-
-                                        return (
-                                          <div key={`pag-${p.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '8px', borderBottom: '1px solid var(--border)', opacity: 0.9 }}>
-                                            <div style={{ color: 'var(--text-dark)', fontSize: '0.9rem', overflow: 'hidden', paddingRight: '10px', flex: 1 }} title={p.nome}>
-                                              <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.nome}</div>
-                                              {/* Se for doação e tiver descrição, mostra o que a pessoa doou */}
-                                              {isDoacao && mov.descricao && (
-                                                <div style={{ fontSize: '0.75rem', color: '#8b5cf6', fontStyle: 'italic', marginTop: '2px', lineHeight: '1.2', whiteSpace: 'normal' }}>
-                                                  "{mov.descricao}"
-                                                </div>
-                                              )}
-                                            </div>
-                                            <div style={{ color: isDoacao ? '#8b5cf6' : 'var(--success)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.85rem', flexShrink: 0, width: '90px', justifyContent: 'flex-end' }}>
-                                              {isDoacao ? <><Gift size={16}/> Doou</> : <><CheckCircle2 size={16}/> Pagou</>}
-                                            </div>
+                                      {/* 2. LISTA DE QUEM JÁ PAGOU */}
+                                      {pagantes.map(p => (
+                                        <div key={`pag-${p.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '8px', borderBottom: '1px solid var(--border)', opacity: 0.7 }}>
+                                          <div style={{ color: 'var(--text-dark)', fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: '10px', flex: 1 }} title={p.nome}>
+                                            {p.nome}
                                           </div>
-                                        );
-                                      })}
+                                          <div style={{ color: 'var(--success)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.85rem', flexShrink: 0, width: '85px', justifyContent: 'flex-end' }}>
+                                            <CheckCircle2 size={16}/> Pagou
+                                          </div>
+                                        </div>
+                                      ))}
+
+                                      {/* 3. LISTA DE ISENTOS (VISUALIZAÇÃO CLARA) */}
+                                      {isentos.map(i => (
+                                        <div key={`isento-${i.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '8px', borderBottom: '1px solid var(--border)', opacity: 0.8 }}>
+                                          <div style={{ color: 'var(--text-dark)', fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: '10px', flex: 1 }} title={i.nome}>
+                                            {i.nome}
+                                          </div>
+                                          <div style={{ color: '#8b5cf6', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.85rem', flexShrink: 0, width: '85px', justifyContent: 'flex-end' }}>
+                                            Isento
+                                          </div>
+                                        </div>
+                                      ))}
                                       
                                       {membrosAtivos.length === 0 && (
                                         <div style={{ textAlign: 'center', padding: '10px', color: 'var(--text-muted)' }}>Nenhum membro ativo cadastrado.</div>
