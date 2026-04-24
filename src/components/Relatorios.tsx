@@ -23,17 +23,14 @@ const formatarMoeda = (valor: number) => {
   return valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-// O componente agora depende exclusivamente do filtro global passado pelo painel principal
 export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
   const [carregando, setCarregando] = useState(false);
   const [relatorio, setRelatorio] = useState<any>(null);
   const [copiado, setCopiado] = useState(false);
   const [gerandoPdf, setGerandoPdf] = useState(false);
 
-  // A MÁGICA AUTOMÁTICA: GERA O RELATÓRIO BASEADO NO FILTRO GLOBAL
   useEffect(() => {
     async function carregarDashboardAutomatico() {
-      // Trava de segurança: Se não tem mês ou está em "TODOS", não carrega a tela de relatório
       if (!mesFiltro || mesFiltro === "TODOS") {
         setRelatorio(null);
         return;
@@ -59,8 +56,14 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
         const entradasGerais = movGeral.filter((m: any) => m.tipo === "ENTRADA");
         const saidasGerais = movGeral.filter((m: any) => m.tipo === "SAIDA").sort((a: any, b: any) => new Date(a.data_pagamento).getTime() - new Date(b.data_pagamento).getTime());
 
-        const totalEntradasGerais = entradasGerais.reduce((acc: number, m: any) => acc + m.valor, 0);
+        // CALCULOS GERAIS DA CASA (Para a tabela de listagem do PDF)
         const totalSaidasGerais = saidasGerais.reduce((acc: number, m: any) => acc + m.valor, 0);
+
+        // NOVO: CALCULO BRUTO (Casa + Festas) para bater 100% com os números do Painel Principal
+        const entradasBrutas = movimentacoes.filter((m: any) => m.tipo === "ENTRADA");
+        const saidasBrutas = movimentacoes.filter((m: any) => m.tipo === "SAIDA");
+        const totalEntradasBrutas = entradasBrutas.reduce((acc: number, m: any) => acc + m.valor, 0);
+        const totalSaidasBrutas = saidasBrutas.reduce((acc: number, m: any) => acc + m.valor, 0);
 
         const pagamentosMensalidade = entradasGerais.filter((m: any) => m.categoria === "MENSALIDADE" && m.filho_id);
         const entradasExtras = entradasGerais.filter((m: any) => m.categoria !== "MENSALIDADE" || !m.filho_id); 
@@ -75,7 +78,6 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
         const filtroNum = anoRef * 100 + mesRef;
 
         const membrosValidosParaOMes = listaFilhos.filter((f: any) => {
-          // 1. Trata a Data de Entrada (Quem entrou DEPOIS do mês filtrado)
           if (f.data_entrada) {
             const dataLimpa = f.data_entrada.split('T')[0];
             const [anoE, mesE] = dataLimpa.split('-');
@@ -83,10 +85,8 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
             if (entradaNum > filtroNum) return false; 
           }
 
-          // 2. Trata a Data de Saída (Quem já estava inativo ANTES do mês filtrado)
           if (f.ativo === false) {
             if (!f.data_saida) return false; 
-            
             const dataLimpaS = f.data_saida.split('T')[0];
             const [anoS, mesS] = dataLimpaS.split('-');
             const saidaNum = parseInt(anoS) * 100 + parseInt(mesS);
@@ -127,13 +127,9 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
           const entFesta = movsDestaFesta.filter((m: any) => m.tipo === "ENTRADA");
           const saiFesta = movsDestaFesta.filter((m: any) => m.tipo === "SAIDA");
           
-          // Enriquecendo os dados da entrada para ter o NOME EXATO do membro
           const entradasDetalhadas = entFesta.map((m: any) => {
             const filho = listaFilhos.find((f: any) => f.id === m.filho_id);
-            return {
-              ...m,
-              nomeMembro: filho ? filho.nome : "Visitante / Anônimo"
-            };
+            return { ...m, nomeMembro: filho ? filho.nome : "Visitante / Anônimo" };
           });
 
           const abreviarNome = (nomeCompleto: string) => {
@@ -154,7 +150,6 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
             .map((f: any) => abreviarNome(f.nome))
             .join(", ");
 
-          // NOVA ARRAY: Guarda o nome completo dos pendentes para montarmos a tabela no PDF
           const pendentesArray = membrosValidosParaOMes
             .filter((f: any) => !f.isento && !idsPagantesFesta.includes(f.id))
             .map((f: any) => f.nome);
@@ -191,9 +186,10 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
           geral: {
             saidas: saidasGerais,
             entradasExtras: entradasExtras,
-            totalEntradas: totalEntradasGerais,
-            totalSaidas: totalSaidasGerais,
-            saldo: totalEntradasGerais - totalSaidasGerais,
+            totalEntradas: totalEntradasBrutas, // Usando Bruto
+            totalSaidas: totalSaidasBrutas,     // Usando Bruto
+            totalSaidasGerais: totalSaidasGerais, // Guardando o geral pro subtotal do PDF
+            saldo: totalEntradasBrutas - totalSaidasBrutas,
             saldoConta: saldoTotalConta 
           },
           corrente: {
@@ -219,9 +215,9 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
     const r = relatorio.corrente.resumo;
     const total = r.pagantes + r.pendentes + r.isentos;
     
-    let texto = `📊 *BALANCETE - ${relatorio.mes}*\n\n`;
-    texto += `🟢 Arrecadado: R$ ${formatarMoeda(relatorio.geral.totalEntradas)}\n`;
-    texto += `🔴 Gasto: R$ ${formatarMoeda(relatorio.geral.totalSaidas)}\n`;
+    let texto = `📊 *BALANCETE GERAL - ${relatorio.mes}*\n\n`;
+    texto += `🟢 Arrecadado (Bruto): R$ ${formatarMoeda(relatorio.geral.totalEntradas)}\n`;
+    texto += `🔴 Gasto (Bruto): R$ ${formatarMoeda(relatorio.geral.totalSaidas)}\n`;
     texto += `💰 Saldo do Mês: R$ ${formatarMoeda(relatorio.geral.saldo)}\n`;
     texto += `🏦 *SALDO TOTAL CONTA: R$ ${formatarMoeda(relatorio.geral.saldoConta)}*\n\n`;
     texto += `*RADAR DA CORRENTE (${total} Médiuns)*\n`;
@@ -293,8 +289,8 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
       let alturaLadoDireito = 28;
 
       const resumoBody = [
-        ['Total Arrecadado', formatarMoeda(relatorio.geral.totalEntradas)],
-        ['Total Gasto', `- ${formatarMoeda(relatorio.geral.totalSaidas)}`],
+        ['Total Arrecadado (Bruto)', formatarMoeda(relatorio.geral.totalEntradas)],
+        ['Total Gasto (Bruto)', `- ${formatarMoeda(relatorio.geral.totalSaidas)}`],
         ['Saldo Líquido do Mês', formatarMoeda(relatorio.geral.saldo)],
         ['SALDO TOTAL EM CONTA', formatarMoeda(relatorio.geral.saldoConta)] 
       ];
@@ -329,7 +325,7 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
         autoTable(doc, {
           startY: alturaLadoDireito,
           margin: { left: 160, right: 10 },
-          head: [['Data', 'Valor', 'Outras Entradas / Doações']],
+          head: [['Data', 'Valor', 'Outras Entradas / Doações Gerais']],
           body: extrasBody,
           theme: 'grid',
           headStyles: { fillColor: [226, 239, 218], textColor: 0 },
@@ -345,12 +341,14 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
         s.descricao || s.categoria
       ]);
       if (gastosBody.length === 0) gastosBody.push(['-', '-', 'Sem gastos registrados']);
-      gastosBody.push(['', formatarMoeda(relatorio.geral.totalSaidas), 'TOTAL GASTOS']);
+      
+      // AVISO CLARO: Subtotal da lista para não confundir com o valor bruto do topo
+      gastosBody.push(['', formatarMoeda(relatorio.geral.totalSaidasGerais), 'SUBTOTAL DE GASTOS DA CASA']);
 
       autoTable(doc, {
         startY: alturaLadoDireito,
         margin: { left: 160, right: 10 },
-        head: [['Data', 'Valor', 'Relação de Gastos / Despesas']],
+        head: [['Data', 'Valor', 'Relação de Gastos / Despesas Gerais']],
         body: gastosBody,
         theme: 'grid',
         headStyles: { fillColor: [248, 215, 218], textColor: [114, 28, 36] },
@@ -368,6 +366,41 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
           }
         }
       });
+      alturaLadoDireito = (doc as any).lastAutoTable.finalY + 4;
+
+      relatorio.festas.forEach((f: any) => {
+        const festaBody = [
+          ['Arrecadado Total', formatarMoeda(f.totalEntradas)],
+          ['Gasto Total', `- ${formatarMoeda(f.totalSaidas)}`],
+          [{ content: `(+) AJUDARAM: ${f.pagantesLista}`, colSpan: 2 }],
+          [{ content: `(-) PENDENTES: ${f.pendentesLista}`, colSpan: 2 }]
+        ];
+
+        autoTable(doc, {
+          startY: alturaLadoDireito,
+          margin: { left: 160, right: 10 },
+          head: [[`FESTA: ${f.nome}`, `Saldo: ${formatarMoeda(f.saldo)}`]],
+          body: festaBody,
+          theme: 'grid',
+          headStyles: { fillColor: [255, 242, 204], textColor: 0 },
+          styles: { fontSize: 8, cellPadding: 1.5, textColor: 0, fontStyle: 'bold' },
+          columnStyles: { 0: { cellWidth: 50 }, 1: { halign: 'right' } },
+          willDrawCell: function(data) {
+            if (data.row.index === 1 && data.column.index === 1) data.cell.styles.textColor = [192, 0, 0];
+            if (data.row.index === 2) {
+              data.cell.styles.fontSize = 6;
+              data.cell.styles.fontStyle = 'normal';
+              data.cell.styles.textColor = [0, 100, 0]; 
+            }
+            if (data.row.index === 3) {
+              data.cell.styles.fontSize = 6; 
+              data.cell.styles.fontStyle = 'normal';
+              data.cell.styles.textColor = [192, 0, 0];
+            }
+          }
+        });
+        alturaLadoDireito = (doc as any).lastAutoTable.finalY + 4;
+      });
 
       doc.save(`Balancete_TTZ_${relatorio.mes.replace("/", "-")}.pdf`);
     } catch (error) {
@@ -377,7 +410,6 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
     }
   }
 
-  // === PDF DETALHADO POR FESTA COM TABELA DE PENDENTES ===
   async function baixarPDFFesta(festa: any) {
     setGerandoPdf(true);
     try {
@@ -395,7 +427,6 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
         doc.addImage(LOGO_BASE64, 'PNG', 170, 8, 25, 25);
       }
 
-      // Tabela de Resumo Financeiro da Festa
       autoTable(doc, {
         startY: 30,
         head: [['RESUMO FINANCEIRO DA FESTA', 'VALOR']],
@@ -422,7 +453,6 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
 
       let alturaAtual = (doc as any).lastAutoTable.finalY + 8;
       
-      // Tabela de Entradas da Festa (com NOME DO MEMBRO CRUZADO)
       autoTable(doc, {
         startY: alturaAtual,
         head: [['Data', 'Membro / Origem', 'Descrição / Observação', 'Valor']],
@@ -447,7 +477,6 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
 
       alturaAtual = (doc as any).lastAutoTable.finalY + 8;
       
-      // Tabela de Saídas da Festa
       autoTable(doc, {
         startY: alturaAtual,
         head: [['Data', 'Despesa Registrada (Item / Categoria)', 'Valor Gasto']],
@@ -470,7 +499,6 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
 
       alturaAtual = (doc as any).lastAutoTable.finalY + 12;
 
-      // === NOVA TABELA DE PENDENTES (SEGURO PARA O TYPESCRIPT) ===
       if (festa.pendentesArray && festa.pendentesArray.length > 0) {
         
         const corpoPendentes: string[][] = [];
@@ -505,7 +533,6 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
     }
   }
 
-  // TELA DE AVISO: Quando o filtro global estiver em "TODOS"
   if (!mesFiltro || mesFiltro === "TODOS") {
     return (
       <div style={{ width: "100%", paddingBottom: "30px" }}>
@@ -526,14 +553,12 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
   return (
     <div style={{ width: "100%", paddingBottom: "30px" }}>
       
-      {/* INDICADOR DE CARREGAMENTO */}
       {carregando && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '20px' }}>
           ⏳ Calculando dados do mês...
         </div>
       )}
 
-      {/* TELA DE DADOS */}
       {relatorio && !carregando && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'fadeIn 0.5s ease-in-out' }}>
           
@@ -560,7 +585,6 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
             
-            {/* 1. RANKING DE DESPESAS */}
             <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '8px', border: '1px solid var(--border)' }}>
               <h4 style={{ margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--danger)' }}>
                 <TrendingDown size={20} /> Principais Gastos
@@ -584,7 +608,6 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
               )}
             </div>
 
-            {/* 2. TERMÔMETRO DA CORRENTE */}
             <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '8px', border: '1px solid var(--border)' }}>
               <h4 style={{ margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)' }}>
                 <Users size={20} /> Termometro da Corrente
@@ -608,25 +631,23 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
                 </div>
               </div>
               
-              {/* Barra visual de progresso */}
               <div style={{ width: '100%', height: '8px', background: 'var(--border)', borderRadius: '4px', marginTop: '15px', overflow: 'hidden', display: 'flex' }}>
                 <div style={{ width: `${relatorio.insights.taxaPagamento}%`, background: 'var(--success)' }}></div>
                 <div style={{ width: `${100 - relatorio.insights.taxaPagamento}%`, background: 'var(--danger)' }}></div>
               </div>
             </div>
 
-            {/* 3. RESUMO OPERACIONAL */}
             <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '8px', border: '1px solid var(--border)' }}>
               <h4 style={{ margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--success)' }}>
                 <Activity size={20} /> Balanço Operacional
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Arrecadação Total:</span>
+                  <span style={{ color: 'var(--text-muted)' }}>Arrecadação Bruta:</span>
                   <strong style={{ color: 'var(--success)' }}>+ R$ {relatorio.geral.totalEntradas.toFixed(2)}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Gasto Total:</span>
+                  <span style={{ color: 'var(--text-muted)' }}>Gasto Bruto:</span>
                   <strong style={{ color: 'var(--danger)' }}>- R$ {relatorio.geral.totalSaidas.toFixed(2)}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-main)', padding: '10px', borderRadius: '6px' }}>
@@ -640,39 +661,35 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
 
           </div>
 
-          {/* 4. DETALHAMENTO DE FESTAS */}
+          {/* 4. DETALHAMENTO DE FESTAS (CORRIGIDO PARA MODO ESCURO) */}
           {relatorio.festas && relatorio.festas.length > 0 && (
-            <div style={{ marginTop: '10px' }}>
-              <h3 style={{ margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--text-dark)' }}>
-                <PartyPopper size={24} color="#854d0e" /> Resumo das Festas
-              </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+            <div style={{ marginTop: '20px' }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><PartyPopper size={24} /> Detalhamento de Festas</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginTop: '10px' }}>
                 {relatorio.festas.map((f: any, index: number) => (
-                  <div key={index} style={{ background: 'var(--bg-card)', border: '1px solid #fde047', borderRadius: '8px', overflow: 'hidden' }}>
-                    <div style={{ background: '#fef08a', padding: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #fde047' }}>
-                      <h4 style={{ margin: 0, color: '#854d0e', fontSize: '1.1rem' }}>🎉 {f.nome}</h4>
-                      <button
+                  <div key={index} style={{ background: '#fefce8', border: '1px solid #fde047', borderRadius: '8px', overflow: 'hidden', color: '#1f2937' }}>
+                    <div style={{ background: '#fef08a', padding: '12px', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#854d0e' }}>🎉 {f.nome}</span>
+                      
+                      <button 
                         onClick={() => baixarPDFFesta(f)}
-                        disabled={gerandoPdf}
-                        style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#ca8a04', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                        style={{ background: '#854d0e', color: '#fff', border: 'none', padding: '5px 10px', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
                       >
-                        <FileText size={16} /> PDF Detalhado
+                        <FileText size={14} /> PDF Detalhado
                       </button>
                     </div>
-                    <div style={{ padding: '20px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>Arrecadado:</span>
-                        <strong style={{ color: 'var(--success)' }}>+ R$ {formatarMoeda(f.totalEntradas)}</strong>
+                    <div style={{ padding: '15px', fontSize: '0.9rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                        <span style={{ color: '#4b5563' }}>Arrecadado:</span>
+                        <strong style={{color: '#166534'}}>R$ {formatarMoeda(f.totalEntradas)}</strong>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>Gasto:</span>
-                        <strong style={{ color: 'var(--danger)' }}>- R$ {formatarMoeda(f.totalSaidas)}</strong>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                        <span style={{ color: '#4b5563' }}>Gasto:</span>
+                        <strong style={{color: '#991b1b'}}>- R$ {formatarMoeda(f.totalSaidas)}</strong>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-main)', padding: '10px', borderRadius: '6px', marginTop: '10px' }}>
-                        <span style={{ fontWeight: 'bold', color: 'var(--text-dark)' }}>Saldo da Festa:</span>
-                        <strong style={{ color: f.saldo >= 0 ? 'var(--success)' : 'var(--danger)', fontSize: '1.1rem' }}>
-                          R$ {formatarMoeda(f.saldo)}
-                        </strong>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #fde047', paddingTop: '5px', fontWeight: 'bold' }}>
+                        <span style={{ color: '#1f2937' }}>Saldo Festa:</span>
+                        <span style={{color: f.saldo >= 0 ? '#166534' : '#991b1b'}}>R$ {formatarMoeda(f.saldo)}</span>
                       </div>
                     </div>
                   </div>
@@ -681,7 +698,6 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
             </div>
           )}
 
-          {/* COMPONENTE DE EMAILS INTEGRADO NO FINAL */}
           <div style={{ marginTop: '40px' }}>
             <GerenciarEmails />
           </div>

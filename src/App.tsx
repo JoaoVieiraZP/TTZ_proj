@@ -15,6 +15,13 @@ import {
 } from 'lucide-react'
 import './App.css'
 
+// NOVA MÁSCARA PARA O MODAL DE AFASTAMENTO
+const maskMesAno = (v: string) => {
+  let r = v.replace(/\D/g, "").slice(0, 6);
+  if (r.length > 2) return `${r.slice(0, 2)}/${r.slice(2)}`;
+  return r;
+};
+
 const formatarData = (data: string) => {
   if (!data) return '--/--/----'
   const [ano, mes, dia] = data.split('T')[0].split('-')
@@ -45,6 +52,11 @@ export default function App() {
   const [termoBusca, setTermoBusca] = useState('')
   const [abaInativos, setAbaInativos] = useState(false)
 
+  // === ESTADO DOS NOVOS MODAIS DE AFASTAMENTO ===
+  const [modalAfastamento, setModalAfastamento] = useState<{isOpen: boolean, tipo: 'SAIDA' | 'RETORNO', membro: any, dataInput: string}>({
+    isOpen: false, tipo: 'SAIDA', membro: null, dataInput: ''
+  })
+
   const [tema, setTema] = useState(localStorage.getItem('ttz-tema') || 'dark')
 
   useEffect(() => {
@@ -67,6 +79,8 @@ export default function App() {
 
   async function carregarDados() {
     const { data: finAll } = await supabase.from('financeiro').select('id, tipo, valor, mes_referencia, filho_id, categoria, data_pagamento, is_isencao')
+    
+    const { data: afAll } = await supabase.from('afastamentos').select('*')
 
     let bMes = 0, sMes = 0, saldoTotal = 0
 
@@ -94,13 +108,34 @@ export default function App() {
 
       const pendentesReais = p?.filter(devedor => {
         const filhoDb = filhosData.find(x => x.id === devedor.id)
-        if (!filhoDb || filhoDb.ativo === false || filhoDb.isento) return false
+        
+        if (!filhoDb || filhoDb.isento) return false
 
         if (filhoDb.data_entrada) {
           const [anoE, mesE] = filhoDb.data_entrada.split('T')[0].split('-')
           const entradaNum = parseInt(anoE) * 100 + parseInt(mesE)
           if (entradaNum > filtroNum) return false
         }
+
+        const afastamentosFilho = afAll?.filter(af => af.filho_id === filhoDb.id) || [];
+        let isAfastadoNoMes = false;
+        
+        afastamentosFilho.forEach(af => {
+          const [sY, sM] = af.data_saida.split('-');
+          const numSaida = parseInt(sY) * 100 + parseInt(sM);
+          let numRetorno = 999999; 
+          
+          if (af.data_retorno) {
+            const [rY, rM] = af.data_retorno.split('-');
+            numRetorno = parseInt(rY) * 100 + parseInt(rM);
+          }
+          
+          if (filtroNum >= numSaida && filtroNum <= numRetorno) {
+            isAfastadoNoMes = true;
+          }
+        });
+
+        if (isAfastadoNoMes) return false;
 
         return true
       }).map(devedor => {
@@ -162,11 +197,8 @@ export default function App() {
   const calcularHistorico = async (filho: any) => {
     if (!filho) return;
 
-    const { data: pagamentos } = await supabase
-      .from('financeiro')
-      .select('*')
-      .eq('filho_id', filho.id)
-      .eq('categoria', 'MENSALIDADE');
+    const { data: afastamentos } = await supabase.from('afastamentos').select('*').eq('filho_id', filho.id);
+    const { data: pagamentos } = await supabase.from('financeiro').select('*').eq('filho_id', filho.id).eq('categoria', 'MENSALIDADE');
 
     const histGerado: any[] = [];
     const dataAtual = new Date();
@@ -186,10 +218,27 @@ export default function App() {
         const pagou = pagamentos?.find(p => normalizarMes(p.mes_referencia) === normalizarMes(refOriginal));
 
         let statusMensalidade = 'PENDENTE';
+        const iterNum = dataIter.getFullYear() * 100 + (dataIter.getMonth() + 1);
+        
+        let isAfastadoNoMes = false;
+        afastamentos?.forEach(af => {
+          const [sY, sM] = af.data_saida.split('-');
+          const numSaida = parseInt(sY) * 100 + parseInt(sM);
+          let numRetorno = 999999;
+          if (af.data_retorno) {
+            const [rY, rM] = af.data_retorno.split('-');
+            numRetorno = parseInt(rY) * 100 + parseInt(rM);
+          }
+          if (iterNum >= numSaida && iterNum <= numRetorno) {
+            isAfastadoNoMes = true;
+          }
+        });
 
         if (pagou) {
           if (pagou.is_isencao === true) statusMensalidade = 'ISENTO';
           else statusMensalidade = 'PAGO';
+        } else if (isAfastadoNoMes) {
+          statusMensalidade = 'AFASTADO';
         } else if (filho.isento) {
           statusMensalidade = 'ISENTO';
         } else {
@@ -253,6 +302,33 @@ export default function App() {
     }
   };
 
+  // === LÓGICA PARA CONFIRMAR O MODAL DE AFASTAMENTO (AGORA COM MÊS/ANO) ===
+  const confirmarAfastamento = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (modalAfastamento.dataInput.length !== 7) {
+      alert("Preencha o mês e ano completo: MM/AAAA"); 
+      return;
+    }
+    
+    const [m, y] = modalAfastamento.dataInput.split('/');
+    // Forçamos o dia "01" para o banco de dados salvar perfeitamente no formato DATE
+    const dataSQL = `${y}-${m}-01`;
+    
+    if (modalAfastamento.tipo === 'SAIDA') {
+      await supabase.from('filhos').update({ ativo: false }).eq('id', modalAfastamento.membro.id);
+      await supabase.from('afastamentos').insert([{ filho_id: modalAfastamento.membro.id, data_saida: dataSQL }]);
+    } else {
+      await supabase.from('filhos').update({ ativo: true }).eq('id', modalAfastamento.membro.id);
+      const { data: afs } = await supabase.from('afastamentos').select('id').eq('filho_id', modalAfastamento.membro.id).is('data_retorno', null).order('id', { ascending: false }).limit(1);
+      if (afs && afs.length > 0) {
+        await supabase.from('afastamentos').update({ data_retorno: dataSQL }).eq('id', afs[0].id);
+      }
+    }
+    
+    setModalAfastamento({ isOpen: false, tipo: 'SAIDA', membro: null, dataInput: '' });
+    carregarDados();
+  };
+
   useEffect(() => {
     if (filhoExpandido) {
       const filhoAtualizado = todosFilhos.find(f => f.id === filhoExpandido);
@@ -272,6 +348,61 @@ export default function App() {
 
   return (
     <div className="app-layout">
+      
+      {/* === RENDERIZAÇÃO DO MODAL DE AFASTAMENTO/RETORNO (COM MM/AAAA) === */}
+      {modalAfastamento.isOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'var(--bg-card)', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '400px', border: '1px solid var(--border)' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', color: modalAfastamento.tipo === 'SAIDA' ? 'var(--danger)' : 'var(--success)' }}>
+              {modalAfastamento.tipo === 'SAIDA' ? <UserMinus size={22}/> : <UserCheck size={22}/>}
+              {modalAfastamento.tipo === 'SAIDA' ? 'Afastar Membro' : 'Reativar Membro'}
+            </h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '20px' }}>
+              {modalAfastamento.tipo === 'SAIDA' 
+                ? `Informe o mês oficial em que ${modalAfastamento.membro?.nome} se afastou da casa. O sistema deixará de cobrar as mensalidades deste período.`
+                : `Informe o mês oficial do retorno de ${modalAfastamento.membro?.nome}. O sistema voltará a cobrar as mensalidades normalmente.`}
+            </p>
+            
+            <form onSubmit={confirmarAfastamento}>
+              <div className="form-group">
+                <label>Mês Oficial do {modalAfastamento.tipo === 'SAIDA' ? 'Afastamento' : 'Retorno'}</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  <input 
+                    type="text" 
+                    placeholder="MM/AAAA" 
+                    value={modalAfastamento.dataInput} 
+                    onChange={e => setModalAfastamento({...modalAfastamento, dataInput: maskMesAno(e.target.value)})}
+                    required
+                    maxLength={7}
+                    style={{ background: 'var(--bg-main)' }}
+                  />
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      const hoje = new Date();
+                      const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+                      const ano = hoje.getFullYear();
+                      setModalAfastamento({...modalAfastamento, dataInput: `${mes}/${ano}`})
+                    }}
+                    style={{
+                      alignSelf: 'flex-start', background: 'none', border: 'none', color: 'var(--primary)',
+                      fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer', padding: 0, textDecoration: 'underline'
+                    }}
+                  >
+                    Preencher com Hoje
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '25px' }}>
+                <button type="button" onClick={() => setModalAfastamento({...modalAfastamento, isOpen: false})} className="btn-primary" style={{ background: 'var(--text-muted)', flex: 1 }}>Cancelar</button>
+                <button type="submit" className="btn-primary" style={{ background: modalAfastamento.tipo === 'SAIDA' ? 'var(--danger)' : 'var(--success)', flex: 1 }}>Confirmar Registro</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <aside className="sidebar">
         <div className="brand-container">
           <img src="/logo.png" alt="Logo TTZ" className="brand-logo" onError={(e) => (e.currentTarget.style.display = 'none')} />
@@ -528,19 +659,11 @@ export default function App() {
                                     {f.ativo !== false ? (
                                       <>
                                         <button onClick={() => { setFilhoEditando(f); setMostrarFormFilho(true) }} style={{ background: 'none', border: 'none', cursor: 'pointer' }} title="Editar Ficha"><Pencil size={20} color="var(--warning)" /></button>
-                                        <button onClick={() => {
-                                          if (window.confirm(`Desligar ${f.nome} da corrente? O histórico financeiro será mantido.`)) {
-                                            supabase.from('filhos').update({ ativo: false }).eq('id', f.id).then(() => carregarDados())
-                                          }
-                                        }} style={{ background: 'none', border: 'none', cursor: 'pointer' }} title="Desligar Membro"><UserMinus size={20} color="var(--danger)" /></button>
+                                        <button onClick={() => setModalAfastamento({ isOpen: true, tipo: 'SAIDA', membro: f, dataInput: '' })} style={{ background: 'none', border: 'none', cursor: 'pointer' }} title="Desligar/Afastar Membro"><UserMinus size={20} color="var(--danger)" /></button>
                                       </>
                                     ) : (
                                       <>
-                                        <button onClick={() => {
-                                          if (window.confirm(`Reativar ${f.nome} na corrente de trabalho?`)) {
-                                            supabase.from('filhos').update({ ativo: true }).eq('id', f.id).then(() => carregarDados())
-                                          }
-                                        }} style={{ background: 'var(--success)', color: 'white', border: 'none', cursor: 'pointer', padding: '6px 12px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }} title="Reativar Membro">
+                                        <button onClick={() => setModalAfastamento({ isOpen: true, tipo: 'RETORNO', membro: f, dataInput: '' })} style={{ background: 'var(--success)', color: 'white', border: 'none', cursor: 'pointer', padding: '6px 12px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }} title="Reativar Membro">
                                           <UserCheck size={16} />
                                         </button>
                                         <button onClick={() => handleExcluirDefinitivo(f.id, f.nome)} style={{ background: 'none', border: 'none', cursor: 'pointer' }} title="Excluir Permanentemente">
@@ -568,7 +691,6 @@ export default function App() {
                                         )}
                                         <h4 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '5px', wordBreak: 'break-word' }}>{f.nome}</h4>
 
-                                        {/* === EXIBIÇÃO DO CARGO === */}
                                         <div style={{ marginBottom: '12px' }}>
                                           <span style={{ background: 'var(--bg-main)', padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-dark)', border: '1px solid var(--border)' }}>
                                             {f.cargo || 'Médium'}
@@ -607,6 +729,7 @@ export default function App() {
                                                     {h.status === 'VENCIDA' && <span className="badge-status" style={{ background: 'rgba(239, 68, 68, 0.15)', color: 'var(--danger)', border: '1px solid var(--danger)' }}><AlertTriangle size={14} /> VENCIDA</span>}
                                                     {h.status === 'ADIANTADO' && <span className="badge-status badge-adiantado"><FastForward size={14} /> ADIANTADO</span>}
                                                     {h.status === 'ISENTO' && <span className="badge-status badge-isento">ISENTO</span>}
+                                                    {h.status === 'AFASTADO' && <span className="badge-status" style={{ background: 'rgba(156, 163, 175, 0.15)', color: '#6b7280', border: '1px solid #6b7280' }}><Clock size={14} /> LICENÇA / AFASTADO</span>}
                                                     {h.status === 'INCONSISTENTE' && <span className="badge-status" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', border: '1px solid #8b5cf6' }}><AlertCircle size={14} /> INCONSISTENTE</span>}
                                                   </td>
                                                   <td data-label="Data Pgto">{formatarData(h.dt)}</td>
