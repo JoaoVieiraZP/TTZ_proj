@@ -15,7 +15,6 @@ import {
 } from 'lucide-react'
 import './App.css'
 
-// NOVA MÁSCARA PARA O MODAL DE AFASTAMENTO
 const maskMesAno = (v: string) => {
   let r = v.replace(/\D/g, "").slice(0, 6);
   if (r.length > 2) return `${r.slice(0, 2)}/${r.slice(2)}`;
@@ -27,6 +26,12 @@ const formatarData = (data: string) => {
   const [ano, mes, dia] = data.split('T')[0].split('-')
   return `${dia}/${mes}/${ano}`
 }
+
+const formatDBtoMesAno = (dateStr: string) => {
+  if (!dateStr) return '';
+  const [ano, mes] = dateStr.split('-');
+  return `${mes}/${ano}`;
+};
 
 export default function App() {
   const [session, setSession] = useState<any>(null)
@@ -49,12 +54,17 @@ export default function App() {
   const [filhoEditando, setFilhoEditando] = useState<any>(null)
   const [filhoExpandido, setFilhoExpandido] = useState<number | null>(null)
   const [historicoMensalidades, setHistoricoMensalidades] = useState<any[]>([])
+  const [afastamentosMembro, setAfastamentosMembro] = useState<any[]>([]) // Estado novo para os afastamentos do membro expandido
   const [termoBusca, setTermoBusca] = useState('')
   const [abaInativos, setAbaInativos] = useState(false)
 
-  // === ESTADO DOS NOVOS MODAIS DE AFASTAMENTO ===
   const [modalAfastamento, setModalAfastamento] = useState<{isOpen: boolean, tipo: 'SAIDA' | 'RETORNO', membro: any, dataInput: string}>({
     isOpen: false, tipo: 'SAIDA', membro: null, dataInput: ''
+  })
+
+  // === NOVO MODAL PARA EDITAR AS DATAS ===
+  const [modalEditaAfastamento, setModalEditaAfastamento] = useState<{isOpen: boolean, id: number, dataSaida: string, dataRetorno: string, membroId: number}>({
+    isOpen: false, id: 0, dataSaida: '', dataRetorno: '', membroId: 0
   })
 
   const [tema, setTema] = useState(localStorage.getItem('ttz-tema') || 'dark')
@@ -79,7 +89,6 @@ export default function App() {
 
   async function carregarDados() {
     const { data: finAll } = await supabase.from('financeiro').select('id, tipo, valor, mes_referencia, filho_id, categoria, data_pagamento, is_isencao')
-    
     const { data: afAll } = await supabase.from('afastamentos').select('*')
 
     let bMes = 0, sMes = 0, saldoTotal = 0
@@ -200,6 +209,9 @@ export default function App() {
     const { data: afastamentos } = await supabase.from('afastamentos').select('*').eq('filho_id', filho.id);
     const { data: pagamentos } = await supabase.from('financeiro').select('*').eq('filho_id', filho.id).eq('categoria', 'MENSALIDADE');
 
+    // Popula a tabela visual de afastamentos na aba do membro
+    setAfastamentosMembro(afastamentos?.sort((a, b) => b.id - a.id) || []);
+
     const histGerado: any[] = [];
     const dataAtual = new Date();
 
@@ -302,7 +314,6 @@ export default function App() {
     }
   };
 
-  // === LÓGICA PARA CONFIRMAR O MODAL DE AFASTAMENTO (AGORA COM MÊS/ANO) ===
   const confirmarAfastamento = async (e: React.FormEvent) => {
     e.preventDefault();
     if (modalAfastamento.dataInput.length !== 7) {
@@ -311,7 +322,6 @@ export default function App() {
     }
     
     const [m, y] = modalAfastamento.dataInput.split('/');
-    // Forçamos o dia "01" para o banco de dados salvar perfeitamente no formato DATE
     const dataSQL = `${y}-${m}-01`;
     
     if (modalAfastamento.tipo === 'SAIDA') {
@@ -328,6 +338,57 @@ export default function App() {
     setModalAfastamento({ isOpen: false, tipo: 'SAIDA', membro: null, dataInput: '' });
     carregarDados();
   };
+
+  // === FUNÇÕES DE EDIÇÃO E EXCLUSÃO DO HISTÓRICO DE AFASTAMENTOS ===
+  const abrirEdicaoAfastamento = (af: any, membroId: number) => {
+    setModalEditaAfastamento({
+      isOpen: true,
+      id: af.id,
+      membroId: membroId,
+      dataSaida: formatDBtoMesAno(af.data_saida),
+      dataRetorno: af.data_retorno ? formatDBtoMesAno(af.data_retorno) : ''
+    });
+  };
+
+  const excluirAfastamento = async (afId: number, membro: any) => {
+    if (window.confirm("Apagar este registro de licença/afastamento? As mensalidades daquele período voltarão a ser cobradas.")) {
+      await supabase.from('afastamentos').delete().eq('id', afId);
+      carregarDados();
+      calcularHistorico(membro);
+    }
+  };
+
+  const salvarEdicaoAfastamento = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (modalEditaAfastamento.dataSaida.length !== 7) {
+      alert("A data de saída deve ter o formato MM/AAAA"); return;
+    }
+    if (modalEditaAfastamento.dataRetorno && modalEditaAfastamento.dataRetorno.length !== 7) {
+      alert("A data de retorno deve ter o formato MM/AAAA ou ficar vazia"); return;
+    }
+
+    const [sM, sY] = modalEditaAfastamento.dataSaida.split('/');
+    const saidaSQL = `${sY}-${sM}-01`;
+
+    let retornoSQL = null;
+    if (modalEditaAfastamento.dataRetorno) {
+      const [rM, rY] = modalEditaAfastamento.dataRetorno.split('/');
+      retornoSQL = `${rY}-${rM}-01`;
+    }
+
+    await supabase.from('afastamentos').update({
+      data_saida: saidaSQL,
+      data_retorno: retornoSQL
+    }).eq('id', modalEditaAfastamento.id);
+
+    setModalEditaAfastamento({ isOpen: false, id: 0, membroId: 0, dataSaida: '', dataRetorno: '' });
+    carregarDados();
+    
+    // Atualiza a tela de baixo para o membro exato que estamos olhando
+    const membroAtualizado = todosFilhos.find(f => f.id === modalEditaAfastamento.membroId);
+    if (membroAtualizado) calcularHistorico(membroAtualizado);
+  };
+  // ===================================================================
 
   useEffect(() => {
     if (filhoExpandido) {
@@ -349,7 +410,7 @@ export default function App() {
   return (
     <div className="app-layout">
       
-      {/* === RENDERIZAÇÃO DO MODAL DE AFASTAMENTO/RETORNO (COM MM/AAAA) === */}
+      {/* MODAL 1: REGISTRAR NOVA SAÍDA OU RETORNO */}
       {modalAfastamento.isOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: 'var(--bg-card)', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '400px', border: '1px solid var(--border)' }}>
@@ -384,10 +445,7 @@ export default function App() {
                       const ano = hoje.getFullYear();
                       setModalAfastamento({...modalAfastamento, dataInput: `${mes}/${ano}`})
                     }}
-                    style={{
-                      alignSelf: 'flex-start', background: 'none', border: 'none', color: 'var(--primary)',
-                      fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer', padding: 0, textDecoration: 'underline'
-                    }}
+                    style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: 'var(--primary)', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
                   >
                     Preencher com Hoje
                   </button>
@@ -397,6 +455,49 @@ export default function App() {
               <div style={{ display: 'flex', gap: '10px', marginTop: '25px' }}>
                 <button type="button" onClick={() => setModalAfastamento({...modalAfastamento, isOpen: false})} className="btn-primary" style={{ background: 'var(--text-muted)', flex: 1 }}>Cancelar</button>
                 <button type="submit" className="btn-primary" style={{ background: modalAfastamento.tipo === 'SAIDA' ? 'var(--danger)' : 'var(--success)', flex: 1 }}>Confirmar Registro</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: EDITAR AS DATAS DE UM AFASTAMENTO PASSADO */}
+      {modalEditaAfastamento.isOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'var(--bg-card)', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '400px', border: '1px solid var(--border)' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--warning)' }}>
+              <Pencil size={22}/> Editar Datas de Saída
+            </h3>
+            
+            <form onSubmit={salvarEdicaoAfastamento}>
+              <div className="form-group">
+                <label>Mês de Saída</label>
+                <input 
+                  type="text" 
+                  placeholder="MM/AAAA" 
+                  value={modalEditaAfastamento.dataSaida} 
+                  onChange={e => setModalEditaAfastamento({...modalEditaAfastamento, dataSaida: maskMesAno(e.target.value)})}
+                  required
+                  maxLength={7}
+                  style={{ background: 'var(--bg-main)' }}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Mês de Retorno (Deixe em branco se ainda estiver fora)</label>
+                <input 
+                  type="text" 
+                  placeholder="MM/AAAA" 
+                  value={modalEditaAfastamento.dataRetorno} 
+                  onChange={e => setModalEditaAfastamento({...modalEditaAfastamento, dataRetorno: maskMesAno(e.target.value)})}
+                  maxLength={7}
+                  style={{ background: 'var(--bg-main)' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '25px' }}>
+                <button type="button" onClick={() => setModalEditaAfastamento({...modalEditaAfastamento, isOpen: false})} className="btn-primary" style={{ background: 'var(--text-muted)', flex: 1 }}>Cancelar</button>
+                <button type="submit" className="btn-primary" style={{ background: 'var(--warning)', color: 'var(--text-dark)', flex: 1 }}>Salvar</button>
               </div>
             </form>
           </div>
@@ -711,7 +812,35 @@ export default function App() {
                                           <div className="crm-info-item"><span>Data de Nascimento:</span> <strong>{formatarData(f.data_nascimento)}</strong></div>
                                           <div className="crm-info-item"><span>Entrou na Casa em:</span> <strong>{formatarData(f.data_entrada)}</strong></div>
                                         </div>
+
+                                        {/* HISTÓRICO DE AFASTAMENTOS (EDITÁVEL) */}
+                                        {afastamentosMembro.length > 0 && (
+                                          <div style={{ marginTop: '20px', borderTop: '1px solid var(--border)', paddingTop: '15px', textAlign: 'left' }}>
+                                            <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '10px' }}>
+                                              <CalendarDays size={16} /> Licenças Registradas:
+                                            </span>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                              {afastamentosMembro.map((af) => (
+                                                <div key={af.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-main)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                                                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                    <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 'bold' }}>Saída: {formatDBtoMesAno(af.data_saida)}</span>
+                                                    <span style={{ fontSize: '0.75rem', color: af.data_retorno ? 'var(--success)' : 'var(--text-muted)', fontWeight: 'bold' }}>
+                                                      Retorno: {af.data_retorno ? formatDBtoMesAno(af.data_retorno) : ' - '}
+                                                    </span>
+                                                  </div>
+                                                  {isAdmin && (
+                                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                                      <button onClick={() => abrirEdicaoAfastamento(af, f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer' }} title="Corrigir datas"><Pencil size={14} color="var(--warning)" /></button>
+                                                      <button onClick={() => excluirAfastamento(af.id, f)} style={{ background: 'none', border: 'none', cursor: 'pointer' }} title="Excluir licença"><Trash2 size={14} color="var(--danger)" /></button>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
                                       </div>
+
                                       <div className="crm-history">
                                         <h4 style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}><Wallet size={20} color="var(--success)" /> Histórico Financeiro</h4>
                                         <div className="history-scroll">
