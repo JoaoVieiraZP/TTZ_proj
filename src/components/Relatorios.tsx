@@ -1,9 +1,25 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../config/supabase";
-import { Download, Copy, CheckCircle2, TrendingDown, Users, Activity, CalendarDays, PartyPopper, FileText } from "lucide-react";
+import { 
+  Download, 
+  Copy, 
+  CheckCircle2, 
+  TrendingDown, 
+  Users, 
+  Activity, 
+  CalendarDays, 
+  PartyPopper, 
+  FileText, 
+  ChevronDown, 
+  ChevronUp 
+} from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { GerenciarEmails } from "./GerenciarEmails";
+
+// Cores vibrantes para o gráfico de despesas
+const CORES_GRAFICO = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#10b981', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef'];
 
 // ============================================================================
 // COLOQUE AQUI O CÓDIGO BASE64 DA SUA LOGO
@@ -23,11 +39,42 @@ const formatarMoeda = (valor: number) => {
   return valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
+// Formatador visual para os relatórios (Ranking e Gráficos)
+const formatarCategoria = (cat: string) => {
+  const mapa: Record<string, string> = {
+    "MENSALIDADE": "Mensalidade",
+    "FESTA": "Festa / Evento",
+    "BEBIDA_FUMO": "Bebidas e Fumos",
+    "VELA": "Velas",
+    "DOACAO": "Doação",
+    "OUTROS": "Outros"
+  };
+  return mapa[cat] || cat;
+};
+
+// Customizador de Labels (Coloca a % dentro da fatia da pizza)
+const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
+  // Só mostra o texto se a fatia for maior que 5% para não embolar visualmente
+  if (percent < 0.05) return null; 
+  
+  const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+  const x = cx + radius * Math.cos(-midAngle * Math.PI / 180);
+  const y = cy + radius * Math.sin(-midAngle * Math.PI / 180);
+
+  return (
+    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={13} fontWeight="bold" style={{ pointerEvents: 'none' }}>
+      {`${(percent * 100).toFixed(0)}%`}
+    </text>
+  );
+};
+
 export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
   const [carregando, setCarregando] = useState(false);
   const [relatorio, setRelatorio] = useState<any>(null);
   const [copiado, setCopiado] = useState(false);
   const [gerandoPdf, setGerandoPdf] = useState(false);
+  
+  const [mostrarGrafico, setMostrarGrafico] = useState(false);
 
   useEffect(() => {
     async function carregarDashboardAutomatico() {
@@ -50,23 +97,40 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
         const listaFilhos = filhos || [];
         const listaFestas = festas || [];
 
+        // CATEGORIAS OFICIAIS (O que não for isso, vira "OUTROS" no gráfico)
+        const categoriasPadroes = ["MENSALIDADE", "FESTA", "BEBIDA_FUMO", "VELA", "DOACAO"];
+
+        // LÓGICA AGRUPADA DO GRÁFICO DE DESPESAS
+        const categoriasMap: Record<string, number> = {};
+        movimentacoes.forEach((m: any) => {
+          if (m.tipo === "SAIDA") {
+            let cat = m.categoria || 'OUTROS';
+            if (!categoriasPadroes.includes(cat)) {
+              cat = 'OUTROS'; // Agrupa categorias personalizadas/avulsas
+            }
+            categoriasMap[cat] = (categoriasMap[cat] || 0) + m.valor;
+          }
+        });
+        
+        const dadosGrafico = Object.entries(categoriasMap)
+          .map(([name, value]) => ({ name, value }))
+          .sort((a: any, b: any) => b.value - a.value);
+
         const movGeral = movimentacoes.filter((m: any) => !m.festa_id);
         const movFestas = movimentacoes.filter((m: any) => m.festa_id);
 
         const entradasGerais = movGeral.filter((m: any) => m.tipo === "ENTRADA");
         const saidasGerais = movGeral.filter((m: any) => m.tipo === "SAIDA").sort((a: any, b: any) => new Date(a.data_pagamento).getTime() - new Date(b.data_pagamento).getTime());
 
-        // CALCULOS GERAIS DA CASA (Para a tabela de listagem do PDF)
         const totalSaidasGerais = saidasGerais.reduce((acc: number, m: any) => acc + m.valor, 0);
 
-        // NOVO: CALCULO BRUTO (Casa + Festas) para bater 100% com os números do Painel Principal
         const entradasBrutas = movimentacoes.filter((m: any) => m.tipo === "ENTRADA");
         const saidasBrutas = movimentacoes.filter((m: any) => m.tipo === "SAIDA");
         const totalEntradasBrutas = entradasBrutas.reduce((acc: number, m: any) => acc + m.valor, 0);
         const totalSaidasBrutas = saidasBrutas.reduce((acc: number, m: any) => acc + m.valor, 0);
 
         const pagamentosMensalidade = entradasGerais.filter((m: any) => m.categoria === "MENSALIDADE" && m.filho_id);
-        const entradasExtras = entradasGerais.filter((m: any) => m.categoria !== "MENSALIDADE" || !m.filho_id); 
+        const entriesExtras = entradasGerais.filter((m: any) => m.categoria !== "MENSALIDADE" || !m.filho_id); 
 
         let pagantesQtd = 0;
         let pendentesQtd = 0;
@@ -167,8 +231,13 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
           };
         });
 
+        // RANKING TAMBÉM AGRUPADO
         const ranking = saidasGerais.reduce((acc: any, curr: any) => {
-          acc[curr.categoria] = (acc[curr.categoria] || 0) + curr.valor;
+          let catRanking = curr.categoria || 'OUTROS';
+          if (!categoriasPadroes.includes(catRanking)) {
+            catRanking = 'OUTROS';
+          }
+          acc[catRanking] = (acc[catRanking] || 0) + curr.valor;
           return acc;
         }, {} as Record<string, number>);
         const rankingDespesas = Object.entries(ranking).sort((a: any, b: any) => b[1] - a[1]).slice(0, 3);
@@ -185,10 +254,10 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
           mes: mesFiltro,
           geral: {
             saidas: saidasGerais,
-            entradasExtras: entradasExtras,
-            totalEntradas: totalEntradasBrutas, // Usando Bruto
-            totalSaidas: totalSaidasBrutas,     // Usando Bruto
-            totalSaidasGerais: totalSaidasGerais, // Guardando o geral pro subtotal do PDF
+            entradasExtras: entriesExtras,
+            totalEntradas: totalEntradasBrutas, 
+            totalSaidas: totalSaidasBrutas,     
+            totalSaidasGerais: totalSaidasGerais, 
             saldo: totalEntradasBrutas - totalSaidasBrutas,
             saldoConta: saldoTotalConta 
           },
@@ -198,7 +267,8 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
             resumo: { pagantes: pagantesQtd, pendentes: pendentesQtd, isentos: isentosQtd }
           },
           festas: relatorioFestas,
-          insights: { rankingDespesas, taxaPagamento, totalCorrente: pagantesQtd + pendentesQtd + isentosQtd }
+          insights: { rankingDespesas, taxaPagamento, totalCorrente: pagantesQtd + pendentesQtd + isentosQtd },
+          grafico: dadosGrafico
         });
       } catch (error) {
         console.error("Erro ao montar o dashboard: ", error);
@@ -335,14 +405,14 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
         alturaLadoDireito = (doc as any).lastAutoTable.finalY + 4;
       }
 
+      // No PDF continua mantendo os detalhes específicos para prestação de contas!
       const gastosBody = relatorio.geral.saidas.map((s: any) => [
         formatarDataExcel(s.data_pagamento),
         formatarMoeda(s.valor),
-        s.descricao || s.categoria
+        s.descricao || formatarCategoria(s.categoria)
       ]);
       if (gastosBody.length === 0) gastosBody.push(['-', '-', 'Sem gastos registrados']);
       
-      // AVISO CLARO: Subtotal da lista para não confundir com o valor bruto do topo
       gastosBody.push(['', formatarMoeda(relatorio.geral.totalSaidasGerais), 'SUBTOTAL DE GASTOS DA CASA']);
 
       autoTable(doc, {
@@ -428,7 +498,7 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
       }
 
       autoTable(doc, {
-        startY: 30,
+        startY: 40,
         head: [['RESUMO FINANCEIRO DA FESTA', 'VALOR']],
         body: [
           ['Total Arrecadado (Entradas)', `R$ ${formatarMoeda(festa.totalEntradas)}`],
@@ -483,7 +553,7 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
         body: festa.saidas.length > 0
           ? festa.saidas.map((s: any) => [
               formatarDataExcel(s.data_pagamento),
-              s.descricao || s.categoria,
+              s.descricao || formatarCategoria(s.categoria),
               `- R$ ${formatarMoeda(s.valor)}`
             ])
           : [['-', 'Nenhum gasto registrado nesta festa', '-']],
@@ -532,6 +602,27 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
       setGerandoPdf(false);
     }
   }
+
+  // Componente Customizado do Balãozinho que mostra a Porcentagem e o Valor
+  const CustomTooltipGrafico = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      const total = relatorio?.grafico?.reduce((acc: number, item: any) => acc + item.value, 0) || 1;
+      const pct = ((data.value / total) * 100).toFixed(1);
+
+      return (
+        <div style={{ background: 'var(--bg-card)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+          <strong style={{ color: 'var(--text-dark)', display: 'block', marginBottom: '5px', fontSize: '0.95rem' }}>
+            {formatarCategoria(data.name)}
+          </strong>
+          <div style={{ color: payload[0].fill, fontWeight: 'bold', fontSize: '0.9rem' }}>
+            R$ {data.value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({pct}%)
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
 
   if (!mesFiltro || mesFiltro === "TODOS") {
     return (
@@ -597,7 +688,7 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
                     <div key={item[0]} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-main)', padding: '10px', borderRadius: '6px', borderLeft: '4px solid var(--danger)' }}>
                       <div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>{index + 1}º Lugar</div>
-                        <div style={{ fontWeight: 800, color: 'var(--text-dark)' }}>{item[0].replace('_', ' ')}</div>
+                        <div style={{ fontWeight: 800, color: 'var(--text-dark)' }}>{formatarCategoria(item[0])}</div>
                       </div>
                       <div style={{ fontWeight: 'bold', color: 'var(--danger)' }}>
                         R$ {item[1].toFixed(2)}
@@ -661,7 +752,58 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
 
           </div>
 
-          {/* 4. DETALHAMENTO DE FESTAS (CORRIGIDO PARA MODO ESCURO) */}
+          {/* COMPONENTE RETRÁTIL (ACCORDION) PARA O GRÁFICO DE PIZZA */}
+          {relatorio.grafico && relatorio.grafico.length > 0 && (
+            <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '8px', border: '1px solid var(--border)', marginTop: '10px' }}>
+              <button 
+                onClick={() => setMostrarGrafico(!mostrarGrafico)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', 
+                  width: '100%', background: 'none', border: 'none', color: 'var(--text-dark)',
+                  fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer', padding: 0, outline: 'none'
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <TrendingDown size={20} color="var(--danger)" /> 
+                  Análise de Despesas (Gráfico)
+                </span>
+                {mostrarGrafico ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+              </button>
+
+              {mostrarGrafico && (
+                <div style={{ width: '100%', height: 400, marginTop: '20px', animation: 'fadeIn 0.3s ease-in-out' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={relatorio.grafico}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={70}
+                        outerRadius={120}
+                        paddingAngle={5}
+                        dataKey="value"
+                        stroke="none"
+                        labelLine={false}
+                        label={renderCustomizedLabel}
+                      >
+                        {relatorio.grafico.map((_: any, index: number) => (
+                          <Cell key={`cell-${index}`} fill={CORES_GRAFICO[index % CORES_GRAFICO.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<CustomTooltipGrafico />} />
+                      <Legend 
+                        verticalAlign="bottom" 
+                        iconType="circle" 
+                        formatter={(value) => <span style={{ color: 'var(--text-muted)' }}>{formatarCategoria(value)}</span>}
+                        wrapperStyle={{ paddingTop: '20px' }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+          )}
+
           {relatorio.festas && relatorio.festas.length > 0 && (
             <div style={{ marginTop: '20px' }}>
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><PartyPopper size={24} /> Detalhamento de Festas</h3>
@@ -673,6 +815,7 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
                       
                       <button 
                         onClick={() => baixarPDFFesta(f)}
+                        disabled={gerandoPdf}
                         style={{ background: '#854d0e', color: '#fff', border: 'none', padding: '5px 10px', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
                       >
                         <FileText size={14} /> PDF Detalhado

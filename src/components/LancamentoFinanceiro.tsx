@@ -31,6 +31,18 @@ const maskMesAno = (v: string) => {
   return r;
 };
 
+const formatarCategoria = (cat: string) => {
+  const mapa: Record<string, string> = {
+    "MENSALIDADE": "Mensalidade",
+    "FESTA": "Festa / Evento",
+    "BEBIDA_FUMO": "Bebidas e Fumos",
+    "VELA": "Velas",
+    "DOACAO": "Doação",
+    "OUTROS": "Outros"
+  };
+  return mapa[cat] || cat;
+};
+
 export function LancamentoFinanceiro({
   mesFiltro,
   isAdmin,
@@ -48,8 +60,8 @@ export function LancamentoFinanceiro({
   const [isencaoMes, setIsencaoMes] = useState(false);
 
   const [tipoFiltro, setTipoFiltro] = useState<"TODOS" | "ENTRADA" | "SAIDA">("TODOS");
+  const [categoriaFiltro, setCategoriaFiltro] = useState<string>("TODAS");
 
-  // === LÓGICA DE RESPONSIVIDADE (MOBILE VS PC) ===
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [mostrarFormMobile, setMostrarFormMobile] = useState(false);
 
@@ -58,7 +70,6 @@ export function LancamentoFinanceiro({
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
-  // ==============================================
 
   const [formData, setFormData] = useState({
     valor: "",
@@ -80,7 +91,9 @@ export function LancamentoFinanceiro({
 
     let q = supabase.from("financeiro").select("*").order("id", { ascending: false });
     if (mesFiltro !== "TODOS") q = q.eq("mes_referencia", mesFiltro);
-    const { data: h } = await q.limit(50);
+    
+    // BUG FIX: Aumentado limite de 50 para 2000 para puxar todo o histórico quando estiver em "TODOS"
+    const { data: h } = await q.limit(2000);
     setHistorico(h || []);
   }
 
@@ -136,7 +149,6 @@ export function LancamentoFinanceiro({
     setOutraCat("");
     setIsencaoMes(false);
     
-    // Se estiver no celular, fecha o formulário sozinho após salvar pra mostrar a tabela atualizada
     if (isMobile) setMostrarFormMobile(false);
     
     carregar();
@@ -148,11 +160,16 @@ export function LancamentoFinanceiro({
   }
 
   const historicoFiltrado = historico.filter((h) => {
-    if (tipoFiltro === "TODOS") return true;
-    return h.tipo === tipoFiltro;
+    if (tipoFiltro !== "TODOS" && h.tipo !== tipoFiltro) return false;
+    if (categoriaFiltro === "TODAS") return true;
+    
+    const categoriasPadroes = ["MENSALIDADE", "FESTA", "BEBIDA_FUMO", "VELA", "DOACAO"];
+    if (categoriaFiltro === "OUTROS") {
+      return !categoriasPadroes.includes(h.categoria);
+    }
+    return h.categoria === categoriaFiltro;
   });
 
-  // Função para preencher a data de hoje
   const preencherDataHoje = () => {
     const hoje = new Date();
     const dia = String(hoje.getDate()).padStart(2, '0');
@@ -164,14 +181,12 @@ export function LancamentoFinanceiro({
   return (
     <div className="dashboard-grid">
       
-      {/* === BOTÃO DE TOGGLE SÓ APARECE NO CELULAR === */}
       {isMobile && isAdmin && (
         <button
           className="btn-primary"
           onClick={() => {
             setMostrarFormMobile(!mostrarFormMobile);
             if (mostrarFormMobile && idEdicao) {
-              // Cancela a edição se esconder o form
               setIdEdicao(null);
               setFormData({...formData, valor: "", data_pagamento: "", descricao: "", filho_id: "", festa_id: ""});
               setIsencaoMes(false);
@@ -187,7 +202,6 @@ export function LancamentoFinanceiro({
         </button>
       )}
 
-      {/* === FORMULÁRIO (Aparece sempre no PC, e só quando ativado no Celular) === */}
       {(!isMobile || mostrarFormMobile) && (
         <div className="table-container">
           <h3>
@@ -233,15 +247,8 @@ export function LancamentoFinanceiro({
                       type="button" 
                       onClick={preencherDataHoje}
                       style={{
-                        alignSelf: 'flex-start',
-                        background: 'none',
-                        border: 'none',
-                        color: 'var(--primary)',
-                        fontSize: '0.8rem',
-                        fontWeight: 'bold',
-                        cursor: 'pointer',
-                        padding: 0,
-                        textDecoration: 'underline'
+                        alignSelf: 'flex-start', background: 'none', border: 'none', color: 'var(--primary)',
+                        fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer', padding: 0, textDecoration: 'underline'
                       }}
                     >
                       Preencher com Hoje
@@ -289,6 +296,7 @@ export function LancamentoFinanceiro({
                   <option value="FESTA">Festa / Evento</option>
                   <option value="BEBIDA_FUMO">Bebidas e Fumos</option>
                   <option value="VELA">Compra de Velas</option>
+                  <option value="DOACAO">Doação</option>
                   <option value="OUTROS">Outros</option>
                 </select>
               </div>
@@ -311,7 +319,7 @@ export function LancamentoFinanceiro({
                         <option key={f.id} value={f.id}>
                           {f.nome} {f.ativa === false ? '(Concluída)' : ''}
                         </option>
-                    ))}
+                      ))}
                   </select>
                 </div>
               )}
@@ -349,19 +357,23 @@ export function LancamentoFinanceiro({
               )}
 
               <div className="form-group">
-                <label>Vincular a um Membro (Opcional)</label>
+                <label>
+                  {formData.categoria === "DOACAO" ? "Vincular a um Doador (Opcional)" : "Vincular a um Membro (Opcional)"}
+                </label>
                 <select
                   value={formData.filho_id}
                   onChange={(e) => setFormData({ ...formData, filho_id: e.target.value })}
                 >
-                  <option value="">Lançamento Geral da Casa (Sem Vínculo)</option>
+                  <option value="">
+                    {formData.categoria === "DOACAO" ? "Doador Anônimo / Visitante Externo" : "Lançamento Geral da Casa (Sem Vínculo)"}
+                  </option>
                   {filhos
                     .filter(f => f.ativo !== false || String(f.id) === String(formData.filho_id))
                     .map((f) => (
                       <option key={f.id} value={f.id}>
                         {f.nome} {f.ativo === false ? '(Inativo)' : ''}
                       </option>
-                  ))}
+                    ))}
                 </select>
               </div>
 
@@ -370,17 +382,11 @@ export function LancamentoFinanceiro({
                 <textarea
                   value={formData.descricao}
                   onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
-                  placeholder={isencaoMes ? "Isenção concedida neste mês" : "Ex: 1kg Vela Branca / Pgto de Cota"}
+                  placeholder={formData.categoria === "DOACAO" ? "Ex: Doação de mantimentos ou Pix espontâneo" : isencaoMes ? "Isenção concedida neste mês" : "Ex: 1kg Vela Branca / Pgto de Cota"}
                   rows={2}
                   style={{
-                    width: "100%",
-                    padding: "12px",
-                    borderRadius: "8px",
-                    border: "1px solid var(--border)",
-                    background: "var(--bg-main)",
-                    color: "var(--text-dark)",
-                    fontFamily: "inherit",
-                    resize: "vertical",
+                    width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid var(--border)",
+                    background: "var(--bg-main)", color: "var(--text-dark)", fontFamily: "inherit", resize: "vertical",
                   }}
                 />
               </div>
@@ -389,10 +395,7 @@ export function LancamentoFinanceiro({
                 <button
                   type="submit"
                   className="btn-primary"
-                  style={{
-                    flex: 1,
-                    background: idEdicao ? "var(--warning)" : "var(--primary)",
-                  }}
+                  style={{ flex: 1, background: idEdicao ? "var(--warning)" : "var(--primary)" }}
                 >
                   <Save size={20} />{" "}
                   {idEdicao ? "Atualizar Registro" : "Salvar no Caixa"}
@@ -425,45 +428,73 @@ export function LancamentoFinanceiro({
               </div>
             </form>
           ) : (
-            <div
-              style={{
-                textAlign: "center",
-                padding: "40px 20px",
-                background: "var(--bg-sub)",
-                borderRadius: "12px",
-                color: "var(--text-muted)",
-              }}
-            >
+            <div style={{ textAlign: "center", padding: "40px 20px", background: "var(--bg-sub)", borderRadius: "12px", color: "var(--text-muted)" }}>
               <Lock size={40} style={{ marginBottom: "15px", opacity: 0.5 }} />
-              <h4 style={{ fontSize: "1.1rem", marginBottom: "5px" }}>
-                Cofre Trancado
-              </h4>
-              <p style={{ fontSize: "0.9rem" }}>
-                Modo Leitura: Apenas administradores do Terreiro podem registrar
-                ou alterar lançamentos financeiros.
-              </p>
+              <h4 style={{ fontSize: "1.1rem", marginBottom: "5px" }}>Cofre Trancado</h4>
+              <p style={{ fontSize: "0.9rem" }}>Modo Leitura: Apenas administradores do Terreiro podem registrar ou alterar lançamentos financeiros.</p>
             </div>
           )}
         </div>
       )}
 
       <div className="table-container">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', marginBottom: '15px' }}>
-          <h3 style={{ margin: 0 }}>
-            <History size={22} color="var(--secondary)" /> Últimas Movimentações ({mesFiltro})
+        {/* NOVA DISPOSIÇÃO DO CABEÇALHO E DOS FILTROS */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '20px' }}>
+          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <History size={22} color="var(--secondary)" /> 
+            Últimas Movimentações {mesFiltro === "TODOS" ? "(Histórico Geral)" : `(${mesFiltro})`}
           </h3>
           
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Filter size={18} color="var(--text-muted)" />
-            <select 
-              value={tipoFiltro} 
-              onChange={(e) => setTipoFiltro(e.target.value as any)}
-              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-sub)', color: 'var(--text-dark)', fontWeight: 'bold' }}
-            >
-              <option value="TODOS">Todas Movimentações</option>
-              <option value="ENTRADA">🟢 Só Entradas</option>
-              <option value="SAIDA">🔴 Só Saídas</option>
-            </select>
+          <div style={{ display: 'flex', gap: '10px', width: '100%', flexWrap: 'wrap' }}>
+            
+            {/* Filtro 1: Tipo */}
+            <div style={{ 
+              display: 'flex', alignItems: 'center', background: 'var(--bg-main)', 
+              border: '1px solid var(--border)', borderRadius: '8px', paddingLeft: '10px',
+              flex: '1 1 200px'
+            }}>
+              <Filter size={16} color="var(--primary)" />
+              <select 
+                value={tipoFiltro} 
+                onChange={(e) => setTipoFiltro(e.target.value as any)}
+                style={{ 
+                  border: 'none', background: 'transparent', padding: '8px 10px', 
+                  color: 'var(--text-dark)', fontWeight: 'bold', outline: 'none', 
+                  width: '100%', cursor: 'pointer' 
+                }}
+              >
+                <option value="TODOS">Todos os Fluxos</option>
+                <option value="ENTRADA">🟢 Só Entradas</option>
+                <option value="SAIDA">🔴 Só Saídas</option>
+              </select>
+            </div>
+
+            {/* Filtro 2: Categoria */}
+            <div style={{ 
+              display: 'flex', alignItems: 'center', background: 'var(--bg-main)', 
+              border: '1px solid var(--border)', borderRadius: '8px', paddingLeft: '10px',
+              flex: '1 1 200px'
+            }}>
+              <Tag size={16} color="var(--primary)" />
+              <select 
+                value={categoriaFiltro} 
+                onChange={(e) => setCategoriaFiltro(e.target.value)}
+                style={{ 
+                  border: 'none', background: 'transparent', padding: '8px 10px', 
+                  color: 'var(--text-dark)', fontWeight: 'bold', outline: 'none', 
+                  width: '100%', cursor: 'pointer' 
+                }}
+              >
+                <option value="TODAS">Todas as Categorias</option>
+                <option value="MENSALIDADE">Mensalidades</option>
+                <option value="FESTA">Festas / Eventos</option>
+                <option value="BEBIDA_FUMO">Bebidas e Fumos</option>
+                <option value="VELA">Velas</option>
+                <option value="DOACAO">Doações</option>
+                <option value="OUTROS">Outras (Livres)</option>
+              </select>
+            </div>
+
           </div>
         </div>
 
@@ -482,8 +513,8 @@ export function LancamentoFinanceiro({
             <tbody>
               {historicoFiltrado.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: "center", padding: "20px" }}>
-                    Nenhum lançamento encontrado para este filtro.
+                  <td colSpan={5} style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)", fontWeight: "bold" }}>
+                    Nenhum lançamento encontrado para os filtros selecionados.
                   </td>
                 </tr>
               ) : (
@@ -510,7 +541,7 @@ export function LancamentoFinanceiro({
                         </td>
                         
                         <td data-label="Categoria" style={{ overflow: "hidden" }}>
-                          <div style={{ fontWeight: 'bold', fontSize: '0.85rem', wordBreak: 'break-word', lineHeight: '1.2' }}>{h.categoria}</div>
+                          <div style={{ fontWeight: 'bold', fontSize: '0.85rem', wordBreak: 'break-word', lineHeight: '1.2' }}>{formatarCategoria(h.categoria)}</div>
                           {festaVinculada && (
                             <span style={{display: 'block', fontSize: '0.75rem', color: '#8b5cf6', fontWeight: 'bold', marginTop: '2px', wordBreak: 'break-word'}}>
                               Festa: {festaVinculada.nome}
@@ -518,17 +549,8 @@ export function LancamentoFinanceiro({
                           )}
                           {h.descricao && (
                             <div style={{ 
-                              fontSize: '0.75rem', 
-                              color: 'var(--text-muted)', 
-                              fontStyle: 'italic', 
-                              marginTop: '4px', 
-                              lineHeight: '1.3',
-                              display: '-webkit-box',
-                              WebkitLineClamp: 2, 
-                              WebkitBoxOrient: 'vertical',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              wordBreak: 'break-word'
+                              fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '4px', lineHeight: '1.3',
+                              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis', wordBreak: 'break-word'
                             }}>
                               "{h.descricao}"
                             </div>
@@ -539,10 +561,7 @@ export function LancamentoFinanceiro({
                           data-label="Valor"
                           style={{
                             color: h.tipo === "ENTRADA" ? "var(--success)" : "var(--danger)",
-                            fontWeight: 800,
-                            textAlign: "right",
-                            paddingRight: "15px",
-                            whiteSpace: "nowrap"
+                            fontWeight: 800, textAlign: "right", paddingRight: "15px", whiteSpace: "nowrap"
                           }}
                         >
                           {h.tipo === "ENTRADA" ? "+ " : "- "}R${" "}
@@ -557,18 +576,17 @@ export function LancamentoFinanceiro({
                                   setFormData({
                                     valor: h.valor.toString(),
                                     tipo: h.tipo,
-                                    categoria: ["MENSALIDADE", "FESTA", "BEBIDA_FUMO", "VELA"].includes(h.categoria) ? h.categoria : "OUTROS",
+                                    categoria: ["MENSALIDADE", "FESTA", "BEBIDA_FUMO", "VELA", "DOACAO"].includes(h.categoria) ? h.categoria : "OUTROS",
                                     mes_referencia: h.mes_referencia,
                                     data_pagamento: h.data_pagamento.split("-").reverse().join("/"),
                                     filho_id: h.filho_id || "",
                                     festa_id: h.festa_id || "",
                                     descricao: h.descricao || "",
                                   });
-                                  if (!["MENSALIDADE", "FESTA", "BEBIDA_FUMO", "VELA"].includes(h.categoria)) setOutraCat(h.categoria);
+                                  if (!["MENSALIDADE", "FESTA", "BEBIDA_FUMO", "VELA", "DOACAO"].includes(h.categoria)) setOutraCat(h.categoria);
                                   setIdEdicao(h.id);
                                   setIsencaoMes(h.is_isencao === true);
                                   
-                                  // === MÁGICA DO MOBILE: ABRIR FORM SOZINHO E SUBIR A TELA ===
                                   if (isMobile) setMostrarFormMobile(true);
                                   window.scrollTo({ top: 0, behavior: "smooth" });
                                 }}
@@ -613,10 +631,10 @@ export function LancamentoFinanceiro({
 
                                 <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
                                   <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "5px" }}>
-                                    <User size={16} /> Vínculo Pessoal:
+                                    <User size={16} /> {h.categoria === "DOACAO" ? "Doador:" : "Vínculo Pessoal:"}
                                   </span>
                                   <div style={{ fontWeight: 800, color: filhoVinculado ? "var(--primary)" : "var(--text-dark)" }}>
-                                    {filhoVinculado ? `${filhoVinculado.nome} ${filhoVinculado.ativo === false ? '(Inativo)' : ''}` : "Lançamento Geral"}
+                                    {filhoVinculado ? `${filhoVinculado.nome} ${filhoVinculado.ativo === false ? '(Inativo)' : ''}` : h.categoria === "DOACAO" ? "Doador Externo / Anônimo" : "Lançamento Geral"}
                                   </div>
                                 </div>
                                 
@@ -637,7 +655,7 @@ export function LancamentoFinanceiro({
                                   </span>
                                   <div>
                                     {h.tipo === "ENTRADA" ? (
-                                      <span className="badge-status badge-pago">ENTRADA</span>
+                                      <span className="badge-status badge-pago">{formatarCategoria(h.categoria).toUpperCase()}</span>
                                     ) : (
                                       <span className="badge-status badge-pendente">SAÍDA</span>
                                     )}
