@@ -91,8 +91,6 @@ export function LancamentoFinanceiro({
 
     let q = supabase.from("financeiro").select("*").order("id", { ascending: false });
     if (mesFiltro !== "TODOS") q = q.eq("mes_referencia", mesFiltro);
-    
-    // BUG FIX: Aumentado limite de 50 para 2000 para puxar todo o histórico quando estiver em "TODOS"
     const { data: h } = await q.limit(2000);
     setHistorico(h || []);
   }
@@ -116,7 +114,22 @@ export function LancamentoFinanceiro({
     }
 
     const [d, m, y] = formData.data_pagamento.split("/");
-    const valorFinal = isencaoMes ? 0 : parseFloat(formData.valor);
+    
+    // TRATAMENTO INTELIGENTE DA VÍRGULA / PONTO
+    let valorNumerico = 0;
+    if (!isencaoMes && formData.valor) {
+      let stringValor = formData.valor;
+      // Se tiver ponto de milhar E vírgula decimal (ex: 1.500,50)
+      if (stringValor.includes('.') && stringValor.includes(',')) {
+        stringValor = stringValor.replace(/\./g, '').replace(',', '.');
+      } else {
+        // Se tiver apenas vírgula ou apenas ponto (ex: 1500,50 ou 1500.50)
+        stringValor = stringValor.replace(',', '.');
+      }
+      valorNumerico = parseFloat(stringValor) || 0;
+    }
+
+    const valorFinal = isencaoMes ? 0 : valorNumerico;
 
     const payload = {
       ...formData,
@@ -218,12 +231,13 @@ export function LancamentoFinanceiro({
               <div className="form-row">
                 <div className="form-group">
                   <label>Valor da Operação (R$)</label>
+                  {/* CAMPO DE VALOR ATUALIZADO: type="text" e inputMode="decimal" */}
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     value={isencaoMes ? "0" : formData.valor}
                     onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
-                    placeholder="Ex: 50,00"
+                    placeholder="Ex: 50.00"
                     required={!isencaoMes}
                     disabled={isencaoMes}
                   />
@@ -438,7 +452,6 @@ export function LancamentoFinanceiro({
       )}
 
       <div className="table-container">
-        {/* NOVA DISPOSIÇÃO DO CABEÇALHO E DOS FILTROS */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '20px' }}>
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <History size={22} color="var(--secondary)" /> 
@@ -447,7 +460,6 @@ export function LancamentoFinanceiro({
           
           <div style={{ display: 'flex', gap: '10px', width: '100%', flexWrap: 'wrap' }}>
             
-            {/* Filtro 1: Tipo */}
             <div style={{ 
               display: 'flex', alignItems: 'center', background: 'var(--bg-main)', 
               border: '1px solid var(--border)', borderRadius: '8px', paddingLeft: '10px',
@@ -469,7 +481,6 @@ export function LancamentoFinanceiro({
               </select>
             </div>
 
-            {/* Filtro 2: Categoria */}
             <div style={{ 
               display: 'flex', alignItems: 'center', background: 'var(--bg-main)', 
               border: '1px solid var(--border)', borderRadius: '8px', paddingLeft: '10px',
@@ -574,7 +585,8 @@ export function LancamentoFinanceiro({
                               <button
                                 onClick={() => {
                                   setFormData({
-                                    valor: h.valor.toString(),
+                                    // Retorna com vírgula para a caixa de edição
+                                    valor: h.valor.toFixed(2).replace('.', ','),
                                     tipo: h.tipo,
                                     categoria: ["MENSALIDADE", "FESTA", "BEBIDA_FUMO", "VELA", "DOACAO"].includes(h.categoria) ? h.categoria : "OUTROS",
                                     mes_referencia: h.mes_referencia,

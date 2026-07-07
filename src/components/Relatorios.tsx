@@ -17,6 +17,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { GerenciarEmails } from "./GerenciarEmails";
+import { AtivarNotificacoes } from "./AtivarNotificacoes";
 
 // Cores vibrantes para o gráfico de despesas
 const CORES_GRAFICO = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#10b981', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef'];
@@ -841,8 +842,9 @@ export function Relatorios({ mesFiltro }: { mesFiltro: string }) {
             </div>
           )}
 
-          <div style={{ marginTop: '40px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <GerenciarEmails />
+            <AtivarNotificacoes />
           </div>
 
         </div>
