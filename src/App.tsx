@@ -11,7 +11,7 @@ import {
   LayoutDashboard, Users, Wallet, AlertCircle, List, Clock,
   CalendarDays, Pencil, UserPlus, ChevronDown,
   ChevronUp, Camera, CheckCircle2, FastForward,
-  Moon, Sun, LogOut, Search, UserMinus, UserCheck, User, AlertTriangle, PartyPopper, FileText, Trash2
+  Moon, Sun, LogOut, Search, UserMinus, UserCheck, User, AlertTriangle, PartyPopper, FileText, Trash2, Cake
 } from 'lucide-react'
 import './App.css'
 
@@ -31,6 +31,17 @@ const formatDBtoMesAno = (dateStr: string) => {
   if (!dateStr) return '';
   const [ano, mes] = dateStr.split('-');
   return `${mes}/${ano}`;
+};
+
+// NOVO: O "Detetive de Aniversários" cravado no fuso horário do Brasil
+const isAniversarianteHoje = (dataNascimento: string | null) => {
+  if (!dataNascimento) return false;
+  
+  const hoje = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+  const dia = String(hoje.getDate()).padStart(2, '0');
+  const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+  
+  return dataNascimento.includes(`-${mes}-${dia}`);
 };
 
 export default function App() {
@@ -54,7 +65,7 @@ export default function App() {
   const [filhoEditando, setFilhoEditando] = useState<any>(null)
   const [filhoExpandido, setFilhoExpandido] = useState<number | null>(null)
   const [historicoMensalidades, setHistoricoMensalidades] = useState<any[]>([])
-  const [afastamentosMembro, setAfastamentosMembro] = useState<any[]>([]) // Estado novo para os afastamentos do membro expandido
+  const [afastamentosMembro, setAfastamentosMembro] = useState<any[]>([]) 
   const [termoBusca, setTermoBusca] = useState('')
   const [abaInativos, setAbaInativos] = useState(false)
 
@@ -62,7 +73,6 @@ export default function App() {
     isOpen: false, tipo: 'SAIDA', membro: null, dataInput: ''
   })
 
-  // === NOVO MODAL PARA EDITAR AS DATAS ===
   const [modalEditaAfastamento, setModalEditaAfastamento] = useState<{isOpen: boolean, id: number, dataSaida: string, dataRetorno: string, membroId: number}>({
     isOpen: false, id: 0, dataSaida: '', dataRetorno: '', membroId: 0
   })
@@ -209,7 +219,6 @@ export default function App() {
     const { data: afastamentos } = await supabase.from('afastamentos').select('*').eq('filho_id', filho.id);
     const { data: pagamentos } = await supabase.from('financeiro').select('*').eq('filho_id', filho.id).eq('categoria', 'MENSALIDADE');
 
-    // Popula a tabela visual de afastamentos na aba do membro
     setAfastamentosMembro(afastamentos?.sort((a, b) => b.id - a.id) || []);
 
     const histGerado: any[] = [];
@@ -339,7 +348,6 @@ export default function App() {
     carregarDados();
   };
 
-  // === FUNÇÕES DE EDIÇÃO E EXCLUSÃO DO HISTÓRICO DE AFASTAMENTOS ===
   const abrirEdicaoAfastamento = (af: any, membroId: number) => {
     setModalEditaAfastamento({
       isOpen: true,
@@ -384,11 +392,9 @@ export default function App() {
     setModalEditaAfastamento({ isOpen: false, id: 0, membroId: 0, dataSaida: '', dataRetorno: '' });
     carregarDados();
     
-    // Atualiza a tela de baixo para o membro exato que estamos olhando
     const membroAtualizado = todosFilhos.find(f => f.id === modalEditaAfastamento.membroId);
     if (membroAtualizado) calcularHistorico(membroAtualizado);
   };
-  // ===================================================================
 
   useEffect(() => {
     if (filhoExpandido) {
@@ -410,7 +416,6 @@ export default function App() {
   return (
     <div className="app-layout">
       
-      {/* MODAL 1: REGISTRAR NOVA SAÍDA OU RETORNO */}
       {modalAfastamento.isOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: 'var(--bg-card)', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '400px', border: '1px solid var(--border)' }}>
@@ -461,7 +466,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL 2: EDITAR AS DATAS DE UM AFASTAMENTO PASSADO */}
       {modalEditaAfastamento.isOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: 'var(--bg-card)', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '400px', border: '1px solid var(--border)' }}>
@@ -748,7 +752,16 @@ export default function App() {
                                   ) : (
                                     <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'var(--bg-sub)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><User size={16} /></div>
                                   )}
-                                  <span style={{ wordBreak: 'break-word' }}>{f.nome}</span>
+                                  
+                                  {/* AQUI ESTÁ A MÁGICA DO BOLO DE ANIVERSÁRIO (Agora com Ícone!) */}
+                                  <span style={{ wordBreak: 'break-word', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    {f.nome}
+                                    {isAniversarianteHoje(f.data_nascimento) && (
+                                      <span title="Aniversariante do dia!" style={{ color: 'var(--primary)', animation: 'bounce 1s infinite', display: 'flex', alignItems: 'center' }}>
+                                        <Cake size={18} />
+                                      </span>
+                                    )}
+                                  </span>
                                 </div>
                               </td>
 
